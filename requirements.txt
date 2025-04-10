@@ -6,3 +6,4 @@ pandas
 plotly
 neurokit2
 pywt
+

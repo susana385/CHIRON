@@ -130,12 +130,3 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
                 if diag: st.markdown(f"📋 *{diag}*", unsafe_allow_html=True)
 
                 st.markdown("</div>", unsafe_allow_html=True)
-
-
-
-
-
-
-    
-
-        
