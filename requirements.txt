@@ -4,6 +4,4 @@ matplotlib
 neurokit2
 pandas
 plotly
-neurokit2
-pywt
 
