@@ -5,6 +5,6 @@ neurokit2
 pandas
 plotly
 python-dotenv
-supabase
-realtime
-
+supabase-py
+realtime-py
+reportlab
