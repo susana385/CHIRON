@@ -4,4 +4,7 @@ matplotlib
 neurokit2
 pandas
 plotly
+python-dotenv
+supabase
+realtime
 

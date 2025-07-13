@@ -1,1 +1,17 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# SQLite DBs
+*.db
+
+# Environment files
+*.env
+supabase.env
+
+# IDE files, images, etc.
+*.png
+.idea/
+.vscode/
 .qodo
