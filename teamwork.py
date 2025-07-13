@@ -2,6 +2,7 @@ import streamlit as st
 from matplotlib import pyplot as plt
 import numpy as np
 from typing import Dict
+from supabase_client import supabase
 
 # ———————————————————————————
 # Constants & helper
@@ -44,6 +45,11 @@ metrics: dict[str, float] = {}
 feedback_text: str = ""
 
 def page_two():
+    sim_id   = st.session_state.get("simulation_id")
+    sim_name = st.session_state.get("simulation_name")
+    if not sim_id or not sim_name:
+        st.error("❌ Simulation context missing — please join a simulation first.")
+        return
     st.subheader(f"TEAM Questionnaire — {st.session_state.supervisor}")
 
     st.markdown("### 🧭 Leadership")
@@ -89,20 +95,25 @@ def page_two():
         task       = get_score(resp['Q10']) + get_score(resp['Q11'])
         overall    = resp['Q12']  # already an int from slider
         total      = leadership + teamwork + task + overall
+        comments = resp.get('coments','')
 
-        st.session_state.teamwork_scores = {
-            "leadership": leadership,
-            "teamwork": teamwork,
-            "task_management": task,
-            "Overall": overall,
-            "Total": total
+        payload = {
+            "id_simulation":       sim_id,
+            "simulation_name":     sim_name,   
+            "leadership":          leadership,
+            "teamwork":            teamwork,
+            "task_management":     task,
+            "overall_performance": overall,
+            "total":               total,
+            "comments":            comments,
         }
-        st.session_state.teamwork_feedback_text = st.session_state.comments
-        st.session_state.teamwork_submitted = True
+        try:
+            supabase.from_("teamwork").insert(payload).execute()
+            st.success("✅ Teamwork assessment saved!")
+        except Exception as e:
+            st.error(f"❌ Failed to save teamwork assessment: {e}")
 
         
-
-
 # ———————————————————————————
 # Public entrypoint
 # ———————————————————————————

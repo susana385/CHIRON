@@ -12,6 +12,7 @@ from questionnaire1 import compute_team_breakdown
 from questionnaire1 import compute_totals
 from questionnaire1 import st as qst
 from questionnaire1 import question_text as qmap
+from questionnaire1 import question_text as global_qmap
 
 
 
@@ -145,7 +146,7 @@ def write_answers(sim_name: str,answers: dict[str, Any],answer_times: dict[str, 
         if inject.startswith("Inject "):
              continue
 
-        qtext     = qmap.get(inject, inject)
+        qtext     = qtext = qmap.get(inject) or global_qmap.get(inject, "")
         elapsed   = answer_times.get(inject)
         breakdown = get_score_breakdown(inject, answer)
         serialized = json.dumps(answer) if isinstance(answer, list) else answer

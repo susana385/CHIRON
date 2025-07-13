@@ -1,8 +1,14 @@
 import time
 import numpy as np
 import streamlit as st
-import neurokit2 as nk
 import matplotlib.pyplot as plt
+import random
+
+def vary_vital(base, min_val, max_val, unit=""):
+    variation = random.randint(-2, 2)
+    value = base + variation
+    value = max(min_val, min(value, max_val))
+    return f"{value}{unit}"
 
 
 # note: st.set_page_config should only be called once at the very top of your app
@@ -40,10 +46,10 @@ def inject_css():
 
 # Define astronaut data
 astronauts = [
-    {"name": "Jack Marshall", "role": "EVA 1", "age": 45, "gender": "Male", "status": "Normal"},
+    {"name": "Jack Marshall", "role": "EVA 1", "age": 50, "gender": "Male", "status": "Normal"},
     {"name": "Clara Jensen", "role": "EVA 2", "age": 45, "gender": "Female", "status": "Warning"},
-    {"name": "Hiroshi Tanaka", "role": "Commander", "age": 45, "gender": "Male", "status": "Critical"},
-    {"name": "Miguel Costa", "role": "Pilot", "age": 45, "gender": "Male", "status": "Normal"},
+    {"name": "Hiroshi Tanaka", "role": "Commander", "age": 47, "gender": "Male", "status": "Critical"},
+    {"name": "Miguel Costa", "role": "Pilot", "age": 40, "gender": "Male", "status": "Normal"},
 ]
 
 # Helper for status label color
@@ -51,32 +57,19 @@ status_classes = {"Normal": "✅", "Warning": "⚠️", "Critical": "❌"}
 
 # ECG generation and HR calculation
 
-def generate_ecg(signal_type):
-    duration = 5
-    sampling_rate = 300
-    ecg = nk.ecg_simulate(duration=duration, sampling_rate=sampling_rate)
-    if signal_type == "Arrhythmia":
-        ecg += np.random.normal(0, 0.2, len(ecg))
-    elif signal_type == "Bradycardia":
-        ecg = np.interp(np.linspace(0,1,200), np.linspace(0,1,len(ecg)), ecg)
-    elif signal_type == "Tachycardia":
-        ecg = np.interp(np.linspace(0,1,400), np.linspace(0,1,len(ecg)), ecg)
-    return np.linspace(0, duration, len(ecg)), ecg, sampling_rate
 
 
-def calculate_heart_rate(ecg_signal, sampling_rate):
-    try:
-        processed, info = nk.ecg_process(ecg_signal, sampling_rate=sampling_rate)
-        return int(np.mean(info["ECG_Rate"]))
-    except:
-        return np.random.randint(60, 100)
 
 
 def run(simulation_name: str, updates:int=10, delay:float=1.0):
-    # inject CSS once
-    inject_css()
+    # from streamlit_autorefresh import st_autorefresh
+    # st_autorefresh(interval=2000, limit=None, key="vitals_autorefresh")
+    if st.button("🔄 Refresh"):
+            st.rerun()
 
-    st.header(f"🚀 Astronaut Vitals: {simulation_name}")
+    inject_css()
+    st.session_state.setdefault("vital_effects", {})
+    st.header(f"🚀 Decision Suport Dashboard: {simulation_name}")
 
 
     # initial heart rates in session
@@ -92,11 +85,38 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
             effects = st.session_state.get("vital_effects", {}).get(astro["role"], {})
             status = effects.get("status", "online" if astro["role"] in ["EVA 1", "EVA 2"] else "offline")
 
-            bp    = effects.get("bp", "120/72 mmHg")
-            spo2  = effects.get("spo2", "98%")
-            hr    = effects.get("hr", "85 bpm")
-            rr    = effects.get("rr", "15 rpm")
-            co2   = effects.get("co2", "40 mmHg")
+            # Fase inicial: gerar valores variáveis até decisão 7
+            answered7 = any(k.startswith("Decision 7") for k in st.session_state.get("answers", {}))
+            if not answered7:
+                if "dynamic_vitals" not in st.session_state:
+                    st.session_state.dynamic_vitals = {}
+
+                if astro["role"] not in st.session_state.dynamic_vitals:
+                    st.session_state.dynamic_vitals[astro["role"]] = {}
+
+                # Atualiza os valores aleatórios em cada ciclo
+                st.session_state.dynamic_vitals[astro["role"]].update({
+                    "hr": vary_vital(85, 78, 92, " bpm"),
+                    "rr": vary_vital(15, 12, 18, " rpm"),
+                    "spo2": vary_vital(98, 95, 99, "%"),
+                    "bp": f"{random.randint(115, 125)}/{random.randint(70, 78)} mmHg",
+                    "co2": vary_vital(40, 37, 43, " mmHg"),
+                })
+
+                hr   = st.session_state.dynamic_vitals[astro["role"]]["hr"]
+                rr   = st.session_state.dynamic_vitals[astro["role"]]["rr"]
+                spo2 = st.session_state.dynamic_vitals[astro["role"]]["spo2"]
+                bp   = st.session_state.dynamic_vitals[astro["role"]]["bp"]
+                co2  = st.session_state.dynamic_vitals[astro["role"]]["co2"]
+
+            else:
+                # Fase após Decision 7 — usar valores fixos definidos nos efeitos
+                hr   = effects.get("hr", "85 bpm")
+                rr   = effects.get("rr", "15 rpm")
+                spo2 = effects.get("spo2", "98%")
+                bp   = effects.get("bp", "120/72 mmHg")
+                co2  = effects.get("co2", "40 mmHg")
+
             temp  = effects.get("temp")
             gluc  = effects.get("glucose")
             elec  = effects.get("electrolytes")
