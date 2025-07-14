@@ -2324,11 +2324,17 @@ def page_running_simulations():
                 next_step = None
                 for step in all_steps:
                     if normalize(step) not in answered:
-                        next_step = step
+                        next_step = normalize(step)
                         break
 
-                if next_step is None:
-                    dm_stage, current_decision_index = 12, None
+                # special-case the Initial Situation inject
+                if next_step == "Initial Situation":
+                    dm_stage = 1
+                    current_decision_index = None
+
+                elif next_step is None:
+                    dm_stage = 12
+                    current_decision_index = None
 
                 elif next_step.startswith("Inject"):
                     # e.g. "Inject 2" → stage 3
@@ -2336,25 +2342,24 @@ def page_running_simulations():
                     current_decision_index = None
 
                 else:
-                    # find the question *within* flat_questions
+                    # it really is a Decision X
+                    # find it in flat_questions…
                     for rel_idx, q in enumerate(flat_questions):
-                        if normalize(q["inject"]) == normalize(next_step):
+                        if normalize(q["inject"]) == next_step:
                             break
                     else:
                         st.error(f"⚠️ Couldn't locate {next_step!r} in flat_questions")
                         return
 
-                    # now pick your stage by which flat_questions you built
+                    # decide your stage + index
                     if flat_questions is b1:
-                        dm_stage, current_decision_index = 2, rel_idx +1
+                        dm_stage, current_decision_index = 2, rel_idx + 1
                     elif flat_questions is b2:
                         dm_stage, current_decision_index = 4, rel_idx + 1
-
-                    elif flat_questions == b3 + b4 + b5:
-                        # if you want a finer split you can check rel_idx here
-                        dm_stage, current_decision_index = 6, rel_idx +1
-                    else:  # flat_questions is b6
-                        dm_stage, current_decision_index = 12, rel_idx +1
+                    elif flat_questions is b3 + b4 + b5:
+                        dm_stage, current_decision_index = 6, rel_idx + 1
+                    else:
+                        dm_stage, current_decision_index = 12, rel_idx + 1
 
                 all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
                 answered = {normalize(r["inject"]) for r in ans_resp.data or []}
