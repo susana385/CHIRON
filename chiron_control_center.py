@@ -4,9 +4,8 @@ import data_simulation          # your wrapper now exposes run(simulation_name)
 import teamwork                 # sets st.session_state['teamwork_submitted']=True
 import questionnaire1           # sets st.session_state['dm_finished']=True
 import os, json
-import pandas as pd 
-from questionnaire1 import compute_team_breakdown
-from questionnaire1 import show_initial_situation, decisions1to13, decisions14to23, decisions24to28, decisions29to32, decisions33to34, decisions35to43
+import pandas as pd
+from questionnaire1 import  decisions1to13, decisions14to23, decisions24to28, decisions29to32, decisions33to34, decisions35to43
 import base64
 from questionnaire1 import apply_vital_consequences
 import matplotlib.pyplot as plt
@@ -18,13 +17,10 @@ from reportlab.lib.styles import getSampleStyleSheet
 from dotenv import load_dotenv
 from supabase_client import supabase
 from datetime import datetime, timedelta
-from streamlit.components.v1 import html as st_html
-from streamlit.components.v1 import iframe
 from questionnaire1 import get_inject_text
 from reportlab.platypus import Table, TableStyle, Image, Paragraph, Spacer
 from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
-from postgrest.exceptions import APIError
 from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
 
