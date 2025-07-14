@@ -1,8 +1,8 @@
 streamlit>=1.46.1
 python-dotenv
+reportlab
 supabase
 realtime
-reportlab
 numpy
 matplotlib
 Pillow
