@@ -646,12 +646,17 @@ def page_dm_questionnaire(key_prefix: str = ""):
     # —————————————————————
     # 2) Run the questionnaire engine
     # —————————————————————
-    if "current_decision_index" not in st.session_state:
-        answered = set(st.session_state.answers)  # keys are the inject names
+    if not isinstance(st.session_state.get("current_decision_index", None), int):
+        st.session_state.current_decision_index = 1
+
+    # ────────── Resume logic ──────────
+    if "answers" in st.session_state and st.session_state.answers:
+        # walk the full list looking for the first unanswered inject
+        answered = set(st.session_state.answers.keys())
         for idx, q in enumerate(st.session_state.all_questions):
             if q["inject"] not in answered:
                 st.session_state.current_decision_index = idx + 1
-            break
+                break
 
     questionnaire1.run(
         supabase, simulation_name=st.session_state.simulation_name,
