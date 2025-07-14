@@ -1,10 +1,11 @@
-streamlit
+streamlit>=1.46.1
 python-dotenv
-supabase-py
-realtime-py
+supabase
+realtime
 reportlab
 numpy
 matplotlib
+Pillow
 neurokit2
 pandas
 plotly
