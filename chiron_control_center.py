@@ -646,6 +646,19 @@ def page_dm_questionnaire(key_prefix: str = ""):
     # —————————————————————
     # 2) Run the questionnaire engine
     # —————————————————————
+    answered = set(st.session_state.answers.keys())
+    all_q    = st.session_state.all_questions or []
+    next_idx = None
+    for idx, d in enumerate(all_q):
+        if d["inject"] not in answered:
+            next_idx = idx
+            break
+
+    if next_idx is None:
+        st.session_state.current_decision_index = len(all_q) + 1
+    else:
+        st.session_state.current_decision_index = next_idx + 1
+        
     questionnaire1.run(
         supabase, simulation_name=st.session_state.simulation_name,
         role=st.session_state.dm_role
