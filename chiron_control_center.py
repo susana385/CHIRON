@@ -2256,6 +2256,8 @@ def page_running_simulations():
                     # all four FD decisions done
                     flat_questions = b6
                     inject_marker  = "Inject 4"
+                
+                st.write(cond2)
 
                 all_steps = []
                 if inject_marker:
@@ -2346,6 +2348,8 @@ def page_running_simulations():
                         dm_stage, current_decision_index = 6, rel_idx +1
                     else:  # flat_questions is b6
                         dm_stage, current_decision_index = 12, rel_idx +1
+                
+                st.write(next_step)
 
                 # 6) stash and navigate
                 # sanity check:
@@ -2354,12 +2358,6 @@ def page_running_simulations():
                     st.error("⚠️ `all_questions` must be a list of dicts but isn’t – please check your decision blocks.")
                     return
                 
-                # st.write("DEBUG block lengths:", {
-                # "b1": len(b1), "b2": len(b2), "b3": len(b3),
-                # "b4": len(b4), "b5": len(b5), "b6": len(b6),
-                # })
-                # st.write("DEBUG decisions33to34 keys:", list(decisions33to34.keys()))
-                # st.write("DEBUG decisions35to43 keys:", list(decisions35to43.keys()))
                 # st.write("DEBUG chosen next_step:", next_step)
                 # st.write("DEBUG dm_stage, current_decision_index:", dm_stage, current_decision_index)
                 # st.write("DEBUG all_steps:", all_steps)
@@ -2380,15 +2378,15 @@ def page_running_simulations():
                 st.session_state.current_decision_index = current_decision_index
                 st.session_state.dm_stage               = dm_stage
                 # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
-                # idx = st.session_state.current_decision_index
-                # st.write("🔍 debug current_decision_index:", idx)
-                # if idx is not None:
-                #     q = st.session_state.all_questions[idx]
-                #     st.write("🔍 debug question:", q["inject"])
-                # else:
-                #     st.write("🔍 currently at an inject, no question index to show")
+                idx = st.session_state.current_decision_index
+                st.write("🔍 debug current_decision_index:", idx)
+                if idx is not None:
+                     q = st.session_state.all_questions[idx]
+                     st.write("🔍 debug question:", q["inject"])
+                else:
+                     st.write("🔍 currently at an inject, no question index to show")
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
