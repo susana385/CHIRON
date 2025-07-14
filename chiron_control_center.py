@@ -2438,16 +2438,15 @@ def page_past_simulations():
 
                         # find participant row
                     part = (
-                            supabase
-                            .from_("participant")
-                            .select("id,participant_role")
-                            .eq("id_simulation", sim["id"])
-                            .eq("id_profile",    pid)
-                            .maybe_single()
-                            .execute()
-                    ).data
-                    if not part:
-                        st.error("You were not a participant in that simulation.")
+                        supabase
+                        .from_("participant")
+                        .select("…")
+                        .maybe_single()
+                        .execute()
+                    )
+                    # If data comes back empty, supabase returns data=None
+                    if part_resp.data is None:
+                        st.error("You have not joined this simulation.")
                         return
 
                     st.session_state.participant_id = part["id"]
