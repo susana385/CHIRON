@@ -648,6 +648,11 @@ def page_dm_questionnaire(key_prefix: str = ""):
     # —————————————————————
 
     # ────────── Resume logic ─────────
+    stage = st.session_state.dm_stage
+    # only default to 1 on actual decision stages, not injects
+    if stage not in (1, 3, 5, 7) \
+    and not isinstance(st.session_state.get("current_decision_index"), int):
+        st.session_state.current_decision_index = 1
 
     questionnaire1.run(
         supabase, simulation_name=st.session_state.simulation_name,
