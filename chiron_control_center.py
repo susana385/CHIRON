@@ -649,17 +649,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
     if not isinstance(st.session_state.get("current_decision_index", None), int):
         st.session_state.current_decision_index = 1
 
-    # ────────── Resume logic ──────────
-    if "answers" in st.session_state and st.session_state.answers:
-        # walk the full list looking for the first unanswered inject
-        answered = set(st.session_state.answers.keys())
-        for idx, q in enumerate(st.session_state.all_questions):
-            if q["inject"] not in answered:
-                st.session_state.current_decision_index = idx + 1
-                break
-    # if we’re sitting on an inject (None), go straight to question 1
-    if st.session_state.current_decision_index is None:
-        st.session_state.current_decision_index = 1
+    # ────────── Resume logic ─────────
 
 
     questionnaire1.run(
@@ -2388,8 +2378,6 @@ def page_running_simulations():
                 # st.write("DEBUG flat_questions", flat_questions)
                 # st.write ("DEBUG b2",b2)
 
-                if current_decision_index is None:
-                    current_decision_index = 1
 
                 st.session_state.all_questions          = flat_questions
                 st.session_state.current_decision_index = current_decision_index
@@ -2403,7 +2391,7 @@ def page_running_simulations():
                 # else:
                 #     st.write("🔍 currently at an inject, no question index to show")
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
