@@ -23,17 +23,20 @@ from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
-
+from supabase import create_client
 
 st.set_page_config(
     page_title="CHIRON Control Center",
     layout="wide",
     initial_sidebar_state="collapsed",
 )
+# local fallback
+load_dotenv()
 
-load_dotenv(dotenv_path="supabase.env")
-url = os.getenv("SUPABASE_URL")
-key = os.getenv("SUPABASE_KEY")
+url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+
+supabase = create_client(url, key)
 auth = supabase.auth
 
 # Build a global map: inject ID → question text
