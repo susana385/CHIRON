@@ -1,13 +1,29 @@
 import os
 from itertools import product
-from supabase import create_client
-
+#from supabase import create_client
+from supabase_client import supabase
 import questionnaire1
 from questionnaire1 import (
     decisions1to13,
     decisions14to23, decisions24to28,
     decisions29to32, decisions33to34, decisions35to43,
 )
+# from dotenv import load_dotenv
+# import os
+
+# # point load_dotenv at your env-file
+# load_dotenv(dotenv_path="supabase.env")
+
+# # now os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY") will be set
+# url = os.getenv("SUPABASE_URL")
+# key = os.getenv("SUPABASE_KEY")
+
+# load_dotenv(dotenv_path="supabase.env")
+# import os
+# print("URL:", os.getenv("SUPABASE_URL"))
+# print("KEY:", os.getenv("SUPABASE_KEY"))
+
+
 
 # 1) Pull out the FD key‐decision options exactly as you already do:
 def options_for(prefix, blocks):
@@ -49,23 +65,34 @@ def max_for_questions(questions):
             if "role_specific" in d and r in d["role_specific"]:
                 entry = d["role_specific"][r]
                 sco_list = entry.get("scores", d.get("scores", []))
+                multi    = entry.get("multi", d.get("multi", False))
             else:
                 sco_list = d.get("scores", [])
+                multi    = d.get("multi", False)
 
             for cat in CATS:
-                # find the best single‐decision contribution
-                best = max((s.get(cat, 0.0) for s in sco_list), default=0.0)
+                # gather all the option‐scores for this category
+                vals = [s.get(cat, 0.0) for s in sco_list]
+
+                if multi:
+                    # sum the top 5 (or fewer) choices
+                    top_n = sorted(vals, reverse=True)[:5]
+                    best = sum(top_n)
+                else:
+                    # single‐choice question
+                    best = max(vals, default=0.0)
+
                 if best > 0:
-                    out[r][cat]["max_value"]   += best
+                    out[r][cat]["max_value"]  += best
                     out[r][cat]["contributors"].append(inj)
 
     return out
 
 
 # 3) Supabase client
-url = os.environ["SUPABASE_URL"]
-key = os.environ["SUPABASE_KEY"]
-sb  = create_client(url, key)
+# url = os.environ["SUPABASE_URL"]
+# key = os.environ["SUPABASE_KEY"]
+#sb  = create_client(url, key)
 
 to_upsert = []
 
@@ -96,7 +123,7 @@ for a7, a13, a23, a34 in product(opt7, opt13, opt23, opt34):
 # 5) Batch upsert
 for i in range(0, len(to_upsert), 200):
     batch = to_upsert[i:i+200]
-    sb.from_("max_scores") \
+    supabase.from_("max_scores") \
       .upsert(batch, on_conflict="scenario_code,role,category") \
       .execute()
 
