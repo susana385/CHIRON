@@ -2313,6 +2313,8 @@ def page_running_simulations():
                         "in scenario?": (not pref.startswith("Decision")) or (pref in scenario_prefixes)
                     })
                 st.write("DEBUG step inspection:", inspect)
+
+                block_3 = b3 + b4 + b5
                 
                 next_step = None
                 for step in all_steps:
@@ -2343,7 +2345,7 @@ def page_running_simulations():
                     elif flat_questions is b2:
                         dm_stage, current_decision_index = 4, rel_idx + 1
 
-                    elif flat_questions is (b3 + b4 + b5):
+                    elif flat_questions is block_3:
                         # if you want a finer split you can check rel_idx here
                         dm_stage, current_decision_index = 6, rel_idx +1
                     else:  # flat_questions is b6
