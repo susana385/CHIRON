@@ -2314,7 +2314,6 @@ def page_running_simulations():
                     })
                 st.write("DEBUG step inspection:", inspect)
 
-                block_3 = b3 + b4 + b5
                 
                 next_step = None
                 for step in all_steps:
@@ -2345,7 +2344,7 @@ def page_running_simulations():
                     elif flat_questions is b2:
                         dm_stage, current_decision_index = 4, rel_idx + 1
 
-                    elif flat_questions is block_3:
+                    elif flat_questions == b3 + b4 + b5:
                         # if you want a finer split you can check rel_idx here
                         dm_stage, current_decision_index = 6, rel_idx +1
                     else:  # flat_questions is b6
@@ -2388,7 +2387,7 @@ def page_running_simulations():
                 else:
                      st.write("🔍 currently at an inject, no question index to show")
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
