@@ -1,11 +1,11 @@
 streamlit
+python-dotenv
+supabase-py
+realtime-py
+reportlab
 numpy
 matplotlib
 neurokit2
 pandas
 plotly
-python-dotenv
-supabase
-realtime
-reportlab
-
+random
