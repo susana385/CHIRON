@@ -2319,7 +2319,7 @@ def page_running_simulations():
                         "answered?": pref in answered,
                         "in scenario?": (not pref.startswith("Decision")) or (pref in scenario_prefixes)
                     })
-                # st.write("DEBUG step inspection:", inspect)
+                st.write("DEBUG step inspection:", inspect)
                 
                 next_step = None
                 for step in all_steps:
@@ -2379,8 +2379,8 @@ def page_running_simulations():
                 # st.write("DEBUG normalized answered prefixes:", answered)
                 # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
 
-                # st.write("DEBUG stage", dm_stage)
-                # st.write("DEBUG current_decision_index", current_decision_index)
+                st.write("DEBUG stage", dm_stage)
+                st.write("DEBUG current_decision_index", current_decision_index)
                 # st.write("DEBUG flat_questions", flat_questions)
                 # st.write ("DEBUG b2",b2)
 
@@ -2397,7 +2397,7 @@ def page_running_simulations():
                 #     st.write("🔍 currently at an inject, no question index to show")
 
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
