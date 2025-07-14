@@ -82,7 +82,7 @@ def page_login():
 
     # adicionado: profile type code para o sign-up
     role_code = st.text_input(
-        "Profile type code (1=admin, 2=supervisor, 3=manager, 1234=participant)",
+        "Profile type code ",
         value=""
     )
 
@@ -242,7 +242,8 @@ def page_welcome():
     ])
 
     st.title("Welcome to CHIRON System")
-    st.write("This system lets you **participate in**, **supervise* *or **administer** CHIRON simulations.")
+    st.write("This system was developed in the IDeaS Laboratory at NOVA School of Science and Technology in Lisbon, Portugal."/
+             "The CHIRON training system was developed with the objective of training astronaut crews and mission control crews for crisis during space missions. With this system is possible to develop hard skills, such as procedural knowledge, and soft skills, such as teamwork.")
 
     role = st.session_state.get("user_role", "participant")
     st.markdown(f"**You are logged in as:** `{role}`")
@@ -394,7 +395,7 @@ def roles_claimed_supervisor():
             .execute()
         st.session_state.dm_stage = 0
         st.session_state.dm_finished = False
-        nav_to("page_supervisor_menu")
+        nav_to("menu_iniciar_simulação_supervisor")
 
     if st.button("Go back to the Main Menu"):
             nav_to("welcome")
@@ -2354,6 +2355,29 @@ def page_running_simulations():
                         dm_stage, current_decision_index = 6, rel_idx +1
                     else:  # flat_questions is b6
                         dm_stage, current_decision_index = 12, rel_idx +1
+
+                all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
+                answered = {normalize(r["inject"]) for r in ans_resp.data or []}
+                # (plus mark off FD‐only decisions the same way you already do…)
+
+                # find the first step they haven’t done
+                for step in all_steps:
+                    if normalize(step) not in answered:
+                        next_step = step
+                        break
+                else:
+                    next_step = None
+
+                if next_step is None:
+                    current_decision_index = None
+                elif next_step.startswith("Inject"):
+                    current_decision_index = None
+                else:
+                    # find it in flat_questions
+                    for idx, q in enumerate(flat_questions):
+                        if normalize(q["inject"]) == normalize(next_step):
+                            current_decision_index = idx + 1
+                            break
                 
                 st.write(next_step)
 
@@ -2392,7 +2416,7 @@ def page_running_simulations():
                 else:
                      st.write("🔍 currently at an inject, no question index to show")
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
