@@ -242,11 +242,12 @@ def page_welcome():
     ])
 
     st.title("Welcome to CHIRON System")
-    st.write(
-    "This system was developed in the IDeaS Laboratory at NOVA School of Science and Technology in Lisbon, Portugal. "
-    + "The CHIRON training system was developed with the objective of training astronaut crews and mission control crews "
-    + "for crisis during space missions. With this system it is possible to develop hard skills, such as procedural knowledge, "
-    + "and soft skills, such as teamwork."
+    st.markdown(
+        """This system was developed in the IDeaS Laboratory at NOVA School of Science and Technology in Lisbon, Portugal.
+
+        The CHIRON training system was developed with the objective of training astronaut crews and mission control crews for crisis during space missions.
+        
+        With this system it is possible to develop hard skills, such as procedural knowledge, and soft skills, such as teamwork."""
 )
 
     role = st.session_state.get("user_role", "participant")
