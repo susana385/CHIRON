@@ -2290,7 +2290,7 @@ def page_running_simulations():
 
                 # 4) now walk the _normalized_ all_steps and land on the first prefix they haven’t done
                 norms = [ normalize(s) for s in all_steps ]
-                st.write("DEBUG norms(all_steps):", norms)
+                # st.write("DEBUG norms(all_steps):", norms)
                 
                 # after flat_questions…
                 scenario_prefixes = {
@@ -2307,7 +2307,7 @@ def page_running_simulations():
                         "answered?": pref in answered,
                         "in scenario?": (not pref.startswith("Decision")) or (pref in scenario_prefixes)
                     })
-                st.write("DEBUG step inspection:", inspect)
+                # st.write("DEBUG step inspection:", inspect)
                 
                 next_step = None
                 for step in all_steps:
