@@ -2398,7 +2398,7 @@ def page_running_simulations():
                 if st.session_state.current_decision_index is None:
                     st.session_state.current_decision_index = 1
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
