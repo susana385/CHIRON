@@ -646,11 +646,8 @@ def page_dm_questionnaire(key_prefix: str = ""):
     # —————————————————————
     # 2) Run the questionnaire engine
     # —————————————————————
-    if not isinstance(st.session_state.get("current_decision_index", None), int):
-        st.session_state.current_decision_index = 1
 
     # ────────── Resume logic ─────────
-
 
     questionnaire1.run(
         supabase, simulation_name=st.session_state.simulation_name,
