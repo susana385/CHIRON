@@ -242,13 +242,7 @@ def page_welcome():
     ])
 
     st.title("Welcome to CHIRON System")
-    st.markdown(
-        """This system was developed in the IDeaS Laboratory at NOVA School of Science and Technology in Lisbon, Portugal.
-
-        The CHIRON training system was developed with the objective of training astronaut crews and mission control crews for crisis during space missions.
-        
-        With this system it is possible to develop hard skills, such as procedural knowledge, and soft skills, such as teamwork."""
-)
+    st.write("This system was developed in the IDeaS Laboratory at NOVA School of Science and Technology in Lisbon, Portugal.The CHIRON training system was developed with the objective of training astronaut crews and mission control crews for crisis during space missions. With this system it is possible to develop hard skills, such as procedural knowledge, and soft skills, such as teamwork.")
 
     role = st.session_state.get("user_role", "participant")
     st.markdown(f"**You are logged in as:** `{role}`")
@@ -2268,12 +2262,8 @@ def page_running_simulations():
                     flat_questions = b6
                     inject_marker  = "Inject 4"
                 
-                st.write(cond2)
 
-                all_steps = []
-                if inject_marker:
-                    all_steps.append(inject_marker)
-                all_steps += [q["inject"] for q in flat_questions]
+                all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
 
 
                 # 3) get the very last answered inject from your answers table
@@ -2295,18 +2285,11 @@ def page_running_simulations():
 
 
                 # build a set of the step-prefixes they’ve already seen
-                answered_raw = [r["inject"] for r in ans_resp.data or []]
-                answered = { normalize(a) for a in answered_raw }
-
-                # also mark off FD-only decisions that FD has already made
-                fd_keys = ("Decision 7", "Decision 13", "Decision 23", "Decision 34")
-                for fd_pref in fd_keys:
-                    if get_role_decision_answer(fd_pref, "FD") is not None:
-                        answered.add(fd_pref)
-
-                # 4) now walk the _normalized_ all_steps and land on the first prefix they haven’t done
-                norms = [ normalize(s) for s in all_steps ]
-                # st.write("DEBUG norms(all_steps):", norms)
+                answered = {normalize(r["inject"]) for r in ans_resp}
+                # also mark off any FD‑only decision they did:
+                for fd in ("Decision 7","Decision 13","Decision 23","Decision 34"):
+                    if get_role_decision_answer(fd,"FD") is not None:
+                        answered.add(fd)
                 
                 # after flat_questions…
                 scenario_prefixes = {
@@ -2314,27 +2297,24 @@ def page_running_simulations():
                     for d in flat_questions
                 }
 
-                inspect = []
-                for step in all_steps:
-                    pref = normalize(step)
-                    inspect.append({
-                        "step": step,
-                        "pref": pref,
-                        "answered?": pref in answered,
-                        "in scenario?": (not pref.startswith("Decision")) or (pref in scenario_prefixes)
-                    })
-                st.write("DEBUG step inspection:", inspect)
-
-                
+                inspect = []                
                 next_step = None
                 for step in all_steps:
                     if normalize(step) not in answered:
                         next_step = normalize(step)
+                        inspect.append({
+                        "step": step,
+                        "pref": next_step,
+                        "answered?": next_step in answered,
+                        "in scenario?": (not next_step.startswith("Decision")) or (next_step in scenario_prefixes)
+                    })
                         break
+
+                st.write("DEBUG step inspection:", inspect)
 
                 # special-case the Initial Situation inject
                 if next_step == "Initial Situation":
-                    dm_stage = 1
+                    dm_stage = 0
                     current_decision_index = None
 
                 elif next_step is None:
@@ -2351,6 +2331,7 @@ def page_running_simulations():
                     # find it in flat_questions…
                     for rel_idx, q in enumerate(flat_questions):
                         if normalize(q["inject"]) == next_step:
+                            rel = rel_idx + 1
                             break
                     else:
                         st.error(f"⚠️ Couldn't locate {next_step!r} in flat_questions")
@@ -2369,25 +2350,6 @@ def page_running_simulations():
                 all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
                 answered = {normalize(r["inject"]) for r in ans_resp.data or []}
                 # (plus mark off FD‐only decisions the same way you already do…)
-
-                # find the first step they haven’t done
-                for step in all_steps:
-                    if normalize(step) not in answered:
-                        next_step = step
-                        break
-                else:
-                    next_step = None
-
-                if next_step is None:
-                    current_decision_index = None
-                elif next_step.startswith("Inject"):
-                    current_decision_index = None
-                else:
-                    # find it in flat_questions
-                    for idx, q in enumerate(flat_questions):
-                        if normalize(q["inject"]) == normalize(next_step):
-                            current_decision_index = idx + 1
-                            break
                 
                 st.write(next_step)
 
@@ -2426,7 +2388,7 @@ def page_running_simulations():
                 else:
                      st.write("🔍 currently at an inject, no question index to show")
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
