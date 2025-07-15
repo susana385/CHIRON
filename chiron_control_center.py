@@ -2353,7 +2353,11 @@ def page_running_simulations():
                 answered = {normalize(r["inject"]) for r in ans_resp.data or []}
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
-                st.write(next_step)
+                st.write("ALL_STEPS:", all_steps)
+                st.write("ANSWERED:", answered)
+                st.write("next_step:", next_step)
+
+
 
                 # 6) stash and navigate
                 # sanity check:
@@ -2390,7 +2394,7 @@ def page_running_simulations():
                 else:
                      st.write("🔍 currently at an inject, no question index to show")
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
