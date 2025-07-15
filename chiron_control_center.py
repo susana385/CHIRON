@@ -2282,17 +2282,22 @@ def page_running_simulations():
                     key = key.strip()
                     m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', key)
                     return m.group(1) if m else key
-
-
+                
                 # build a set of the step-prefixes they’ve already seen
                 rows = getattr(ans_resp, "data", []) or []
                 answered_raw = [r["inject"] for r in rows]
                 answered      = { normalize(r["inject"]) for r in rows }
+
                 # also mark off any FD‑only decision they did:
-                for fd in ("Decision 7","Decision 13","Decision 23","Decision 34"):
-                    if get_role_decision_answer(fd,"FD") is not None:
-                        answered.add(fd)
-                
+                KEY = { normalize(d) for d in ["Decision 7","Decision 13","Decision 23","Decision 34"] }
+                for fd_pref in KEY:
+                    if get_role_decision_answer(fd_pref, "FD") is not None:
+                        answered.add(fd_pref)
+
+                if st.session_state.dm_role != "FD":
+                    answered |= KEY
+
+
                 # after flat_questions…
                 scenario_prefixes = {
                     normalize(d["inject"])
@@ -2350,7 +2355,6 @@ def page_running_simulations():
                         dm_stage, current_decision_index = 12, rel_idx + 1
 
                 all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
-                answered = {normalize(r["inject"]) for r in ans_resp.data or []}
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
                 st.write("ALL_STEPS:", all_steps)
