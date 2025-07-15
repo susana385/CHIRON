@@ -1455,7 +1455,10 @@ def page_team_results():
                 supabase
                 .from_("max_scores")
                 .select("role,category,max_value")
-                .eq("scenario_code", scenario_code)
+                .ilike("scenario_code", f"%7({a7})%")
+                .ilike("scenario_code", f"%13({a13})%")
+                .ilike("scenario_code", f"%23({a23})%")
+                .ilike("scenario_code", f"%34({a34})%")
                 .execute()
             )
             ms_data = ms.data or []
@@ -1813,7 +1816,10 @@ def page_individual_results():
             .from_("max_scores")
             .select("category,max_value")
             .eq("role", dm_role)
-            .eq("scenario_code", scenario_code)
+            .ilike("scenario_code", f"%7({a7})%")
+            .ilike("scenario_code", f"%13({a13})%")
+            .ilike("scenario_code", f"%23({a23})%")
+            .ilike("scenario_code", f"%34({a34})%")
             .execute()
         )
     except Exception as e:
@@ -2410,6 +2416,8 @@ def page_running_simulations():
 def page_past_simulations():
     st.header("📜 Past Simulations")
     # Fetch all simulations whose status is “finished”
+    if st.button("Go back to the Main Menu"):
+            nav_to("welcome")
     
     try:
         response = (
