@@ -50,14 +50,6 @@ astronauts = [
     {"name": "Mariana Figueiras", "role": "FE-3(IV1)", "age": 40, "gender": "Male", "status": "Normal"},
 ]
 
-# Helper for status label color
-status_classes = {"Normal": "✅", "Warning": "⚠️", "Critical": "❌"}
-
-# ECG generation and HR calculation
-
-
-
-
 
 def run(simulation_name: str, updates:int=10, delay:float=1.0):
     # from streamlit_autorefresh import st_autorefresh
@@ -81,7 +73,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
     for col, astro in zip(cols, astronauts):
         with col:
             effects = st.session_state.get("vital_effects", {}).get(astro["role"], {})
-            status = effects.get("status", "online" if astro["role"] in ["EVA 1", "EVA 2"] else "offline")
+            status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-2(EV2)"] else "offline")
 
             # Fase inicial: gerar valores variáveis até decisão 7
             answered7 = any(k.startswith("Decision 7") for k in st.session_state.get("answers", {}))
