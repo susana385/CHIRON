@@ -2285,7 +2285,9 @@ def page_running_simulations():
 
 
                 # build a set of the step-prefixes they’ve already seen
-                answered = {normalize(r["inject"]) for r in ans_resp}
+                rows = getattr(ans_resp, "data", []) or []
+                answered_raw = [r["inject"] for r in rows]
+                answered      = { normalize(r["inject"]) for r in rows }
                 # also mark off any FD‑only decision they did:
                 for fd in ("Decision 7","Decision 13","Decision 23","Decision 34"):
                     if get_role_decision_answer(fd,"FD") is not None:
