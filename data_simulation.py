@@ -44,10 +44,10 @@ def inject_css():
 
 # Define astronaut data
 astronauts = [
-    {"name": "Jack Marshall", "role": "EVA 1", "age": 50, "gender": "Male", "status": "Normal"},
-    {"name": "Clara Jensen", "role": "EVA 2", "age": 45, "gender": "Female", "status": "Warning"},
-    {"name": "Hiroshi Tanaka", "role": "Commander", "age": 47, "gender": "Male", "status": "Critical"},
-    {"name": "Miguel Costa", "role": "Pilot", "age": 40, "gender": "Male", "status": "Normal"},
+    {"name": "Mariana Peyroteo", "role": "FE-1(EV1)", "age": 50, "gender": "Male", "status": "Normal"},
+    {"name": "Ana Martins", "role": "FE-2(EV2)", "age": 45, "gender": "Female", "status": "Warning"},
+    {"name": "Joana Godinho", "role": "Commander(CMO, IV2)", "age": 47, "gender": "Male", "status": "Critical"},
+    {"name": "Mariana Figueiras", "role": "FE-3(IV1)", "age": 40, "gender": "Male", "status": "Normal"},
 ]
 
 # Helper for status label color
