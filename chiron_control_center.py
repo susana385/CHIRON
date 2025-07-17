@@ -2411,6 +2411,11 @@ def page_running_simulations():
                 b5 = decisions33to34.get(cond2, [])
                 b6 = decisions35to43.get(cond3, [])
 
+                next_step = None
+                current_decision_index = None
+                q = None
+
+
                 if not all(cond1):
                     flat_questions = b1
                     inject_marker  = "Initial Situation" if not any(cond1) else "Inject 1"
