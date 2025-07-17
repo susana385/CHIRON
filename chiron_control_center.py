@@ -1322,6 +1322,11 @@ def page_one():
 
 def page_teamwork_survey():
 
+    if "teamwork_responses" not in st.session_state:
+        st.session_state.teamwork_responses = {}
+    if "teamwork_page" not in st.session_state:
+        st.session_state.teamwork_page = 1
+
     sim_id     = st.session_state.simulation_id
 
     likert_options = [
