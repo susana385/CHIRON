@@ -2434,7 +2434,7 @@ def page_running_simulations():
 
                 
 
-                all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
+                #all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
                 
 
 
