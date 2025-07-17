@@ -85,7 +85,7 @@ def page_login():
 
     # adicionado: profile type code para o sign-up
     role_code = st.text_input(
-        "Profile type code ",
+        "Profile type code: Only required for Sign Up ",
         value=""
     )
 
