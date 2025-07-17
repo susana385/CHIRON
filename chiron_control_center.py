@@ -451,6 +451,9 @@ def participant_new_simulation():
     if st.button("Go back to the Main Menu"):
             nav_to("welcome")
 
+    if st.button("🔄 Refresh"):
+        st.rerun()
+
     five_min_ago = (datetime.utcnow() - timedelta(minutes=30)).isoformat() + "Z"
     res = (
         supabase
