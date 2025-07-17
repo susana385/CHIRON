@@ -1294,7 +1294,7 @@ def page_dashboard():
     if st.session_state.teamwork_submitted:
         # once the supervisor has done their form, let anyone jump to team_results
         if st.button("🏆 View Team Results"):
-            nav_to('team_results')
+            nav_to('certify_and_results')
     else:
         st.info("🔒 Team Results will become available after the supervisor submits the teamwork assessment.")
     

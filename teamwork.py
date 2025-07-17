@@ -79,7 +79,7 @@ def page_two():
 
     st.text_area("📝 Comments:", key='comments', height=100)
 
-    if st.button("✅ Submit and See Results"):
+    if st.button("✅ Submit and Continue"):
         if any(resp.get(f'Q{i}', "") == likert_options[0] for i in range(1, 12)):
             st.error("⚠️ Please answer all Likert questions (Q1–Q11) before submitting.")
             return
