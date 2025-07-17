@@ -2432,6 +2432,7 @@ def page_running_simulations():
                 
 
                 all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
+                
 
 
                 # 3) get the very last answered inject from your answers table
@@ -2522,7 +2523,7 @@ def page_running_simulations():
                     else:
                         dm_stage, current_decision_index = 12, rel_idx + 1
 
-                all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
+                #all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
                 st.write("ALL_STEPS:", all_steps)
@@ -2573,7 +2574,7 @@ def page_running_simulations():
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
