@@ -1313,6 +1313,18 @@ def page_dashboard():
     except Exception as e:
         st.error(f"Could not check teamwork submission: {e}")
         return
+    
+    sim = (
+        supabase
+        .from_("simulation")
+        .select("status")
+        .eq("id", st.session_state.simulation_id)
+        .maybe_single()
+        .execute()
+    )
+    if not sim.data or sim.data.get("status") != "finished":
+        st.info("Waiting for the simulation to be finnished.")
+        return
 
     if st.button("🏆 View Team Results"):
         nav_to('certify_and_results')
@@ -1493,7 +1505,7 @@ def page_certify_and_results():
         .execute()
     )
     if not sim.data or sim.data.get("status") != "finished":
-        st.info("Waiting for the system to mark this simulation as finished.")
+        st.info("Waiting for the simulation to be finished.")
         return
 
     # 3) Now that both are true, show the certify button
