@@ -2401,6 +2401,7 @@ def page_running_simulations():
                 cond1 = (ans7,  ans13)             # have we done 7 & 13 yet?
                 cond2 = (ans7,  ans13, ans23)      # have we done 7,13 & 23 yet?
                 cond3 = (ans7,  ans13, ans23, ans34)  # have we done all four?
+                ans28 = get_role_decision_answer("Decision 28", st.session_state.dm_role)
 
                 # 3) Rebuild each block based on those conds
                 b1 = decisions1to13
@@ -2411,30 +2412,32 @@ def page_running_simulations():
                 b6 = decisions35to43.get(cond3, [])
 
                 if not all(cond1):
-                    # still in the first 13 decisions
                     flat_questions = b1
                     inject_marker  = "Initial Situation" if not any(cond1) else "Inject 1"
 
                 elif cond1 and not cond2[2]:
-                    # answered 7+13, but not 23
                     flat_questions = b2
                     inject_marker  = "Inject 2"
 
-                elif cond2 and not cond3[3]:
-                    # answered 7,13,23 but not 34
+                elif cond2 and not ans28:
                     flat_questions = b3
                     inject_marker  = "Inject 3"
-                elif cond2 and not cond3[3]:
+
+                elif ans28 and not ans34:
                     flat_questions = b4 + b5
                     inject_marker  = "Inject 4"
 
                 else:
-                    # all four FD decisions done
+                    # Aqui já passaste pelo Inject 4: segue para o bloco 35–43
                     flat_questions = b6
 
                 
-                all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
-                #all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
+                #all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
+                if inject_marker:
+                    all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
+                else:
+                    all_steps = [q["inject"] for q in flat_questions]
+
                 
 
 
