@@ -1304,12 +1304,35 @@ def page_dashboard():
 def page_teamwork_survey():
     teamwork.run(simulation_name=st.session_state.simulation_name)
 
-    if st.session_state.teamwork_submitted:
-        st.success("✅ Supervisor scores saved.")
-        nav_to('certify_and_results')
-        
     if st.button("Back"):
         nav_to("menu_iniciar_simulação_supervisor")
+
+    sim_id     = st.session_state.simulation_id
+
+    try:
+        # 1) Tenta buscar um row de teamwork para este sim_id + profile_id
+        teamwork_res = (
+            supabase
+            .from_("teamwork")
+            .select("id")
+            .eq("id_simulation", sim_id)
+            .maybe_single()
+            .execute()
+        )
+        # 2) Se a API devolveu um erro, lança para cair no except
+        if getattr(teamwork_res, "error", None):
+            raise Exception(teamwork_res.error.message)
+        # 3) Se não há dados, mostramos o warning e interrompemos
+        if not teamwork_res.data:
+            st.warning("Teamwork form not submitted yet.")
+            return
+
+    except Exception as e:
+        st.error(f"Could not check teamwork submission: {e}")
+        return
+
+    nav_to("certify_results")
+        
 
 def page_certify_and_results():
     st.header("Certification & Combined Results")
