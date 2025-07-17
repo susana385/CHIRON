@@ -2428,7 +2428,7 @@ def page_running_simulations():
                     inject_marker  = "Inject 4"
 
                 elif cond3:
-                    #flat_questions = b6
+                    flat_questions = b6
                     inject_marker  = flat_questions[0]["inject"] if flat_questions else None
 
                     # And crucially, map it to the correct DM stage— 
