@@ -1431,7 +1431,7 @@ def page_teamwork_survey():
             st.error(f"Could not check teamwork submission: {e}")
             return
 
-        nav_to("certify_results")  
+        nav_to("certify_and_results")  
         return  
         
 
