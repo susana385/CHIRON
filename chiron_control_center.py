@@ -1438,11 +1438,31 @@ def page_teamwork_survey():
 def page_certify_and_results():
     st.header("Certification & Combined Results")
     st.write("Make sure the simulation ran and the teamwork form is complete.")
+    
+    sim_id   = st.session_state.get("simulation_id")
 
     # 1) Has the supervisor actually submitted the TEAM form?
-    if not st.session_state.get("teamwork_submitted", False):
-        st.warning("Teamwork form not submitted yet.")
-        return
+    try:
+                # 1) Tenta buscar um row de teamwork para este sim_id + profile_id
+        teamwork_res = (
+            supabase
+            .from_("teamwork")
+            .select("id")
+            .eq("id_simulation", sim_id)
+            .maybe_single()
+            .execute()
+            )
+                # 2) Se a API devolveu um erro, lança para cair no except
+        if getattr(teamwork_res, "error", None):
+            raise Exception(teamwork_res.error.message)
+                # 3) Se não há dados, mostramos o warning e interrompemos
+        if not teamwork_res.data:
+            st.warning("Teamwork form not submitted yet.")
+            return
+
+    except Exception as e:
+            st.error(f"Could not check teamwork submission: {e}")
+            return
 
     # 2) Is the simulation already marked 'finished' in Supabase?
     sim = (
