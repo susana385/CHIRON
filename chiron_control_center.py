@@ -2310,7 +2310,7 @@ def page_running_simulations():
                     })
                         break
 
-                st.write("DEBUG step inspection:", inspect)
+                # st.write("DEBUG step inspection:", inspect)
 
                 # special-case the Initial Situation inject
                 if next_step == "Initial Situation":
@@ -2350,9 +2350,9 @@ def page_running_simulations():
                 all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
-                st.write("ALL_STEPS:", all_steps)
-                st.write("ANSWERED:", answered)
-                st.write("next_step:", next_step)
+                # st.write("ALL_STEPS:", all_steps)
+                # st.write("ANSWERED:", answered)
+                # st.write("next_step:", next_step)
 
 
 
@@ -2373,8 +2373,8 @@ def page_running_simulations():
                 # st.write("DEBUG normalized answered prefixes:", answered)
                 # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
 
-                st.write("DEBUG stage", dm_stage)
-                st.write("DEBUG current_decision_index", current_decision_index)
+                # st.write("DEBUG stage", dm_stage)
+                # st.write("DEBUG current_decision_index", current_decision_index)
                 #st.write("DEBUG flat_questions", flat_questions)
                 # st.write ("DEBUG b2",b2)
 
@@ -2383,15 +2383,21 @@ def page_running_simulations():
                 st.session_state.current_decision_index = current_decision_index
                 st.session_state.dm_stage               = dm_stage
                 # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
-                idx = st.session_state.current_decision_index
-                st.write("🔍 debug current_decision_index:", idx)
-                if idx is not None:
-                      q = st.session_state.all_questions[idx]
-                      st.write("🔍 debug question:", q["inject"])
-                else:
-                      st.write("🔍 currently at an inject, no question index to show")
+                # idx = st.session_state.current_decision_index
+                # st.write("🔍 debug current_decision_index:", idx)
+                # if idx is not None:
+                #       q = st.session_state.all_questions[idx]
+                #       st.write("🔍 debug question:", q["inject"])
+                # else:
+                #       st.write("🔍 currently at an inject, no question index to show")
+                
+                ans12 = get_role_decision_answer("Decision 12", st.session_state.dm_role)
 
-                #nav_to("dm_questionnaire")
+                if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None):
+                    st.warning("⏳ Wait for FD to answer Decision 13 to try to join again")
+                    return
+
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
