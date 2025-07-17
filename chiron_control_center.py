@@ -2533,9 +2533,9 @@ def page_running_simulations():
         
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
-                st.write("ALL_STEPS:", all_steps)
-                st.write("ANSWERED:", answered)
-                st.write("next_step:", next_step)
+                # st.write("ALL_STEPS:", all_steps)
+                # st.write("ANSWERED:", answered)
+                # st.write("next_step:", next_step)
 
 
 
@@ -2566,13 +2566,13 @@ def page_running_simulations():
                 st.session_state.current_decision_index = current_decision_index
                 st.session_state.dm_stage               = dm_stage
                 # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
-                idx = st.session_state.current_decision_index
-                st.write("🔍 debug current_decision_index:", idx)
-                if idx is not None:
-                    q = st.session_state.all_questions[idx]
-                    st.write("🔍 debug question:", q["inject"])
-                else:
-                    st.write("🔍 currently at an inject, no question index to show")
+                # idx = st.session_state.current_decision_index
+                # st.write("🔍 debug current_decision_index:", idx)
+                # if idx is not None:
+                #     q = st.session_state.all_questions[idx]
+                #     st.write("🔍 debug question:", q["inject"])
+                # else:
+                #     st.write("🔍 currently at an inject, no question index to show")
                 
                 ans12 = get_role_decision_answer("Decision 12", st.session_state.dm_role)
                 ans22 = get_role_decision_answer("Decision 22", st.session_state.dm_role)
@@ -2581,7 +2581,7 @@ def page_running_simulations():
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
