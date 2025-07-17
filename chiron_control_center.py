@@ -2430,7 +2430,7 @@ def page_running_simulations():
                 else:
                     # Aqui já passaste pelo Inject 4: segue para o bloco 35–43
                     flat_questions = b6
-                    inject_marker  = None
+                    inject_marker  = "inject 5"
 
                 
                 #all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
