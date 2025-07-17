@@ -2573,7 +2573,7 @@ def page_running_simulations():
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
