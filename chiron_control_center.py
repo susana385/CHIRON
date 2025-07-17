@@ -1291,12 +1291,31 @@ def page_dashboard():
 
     # **Interrompe aqui**, nada mais deve desenhar nesta página
     st.markdown("---")
-    if st.session_state.teamwork_submitted:
-        # once the supervisor has done their form, let anyone jump to team_results
-        if st.button("🏆 View Team Results"):
-            nav_to('certify_and_results')
-    else:
-        st.info("🔒 Team Results will become available after the supervisor submits the teamwork assessment.")
+    sim_id     = st.session_state.simulation_id
+    try:
+                # 1) Tenta buscar um row de teamwork para este sim_id + profile_id
+        teamwork_res = (
+            supabase
+            .from_("teamwork")
+            .select("id")
+            .eq("id_simulation", sim_id)
+            .maybe_single()
+            .execute()
+        )
+                # 2) Se a API devolveu um erro, lança para cair no except
+        if getattr(teamwork_res, "error", None):
+            raise Exception(teamwork_res.error.message)
+                # 3) Se não há dados, mostramos o warning e interrompemos
+        if not teamwork_res.data:
+            st.warning("🔒 Team Results will become available after the supervisor submits the teamwork assessment.")
+            return
+
+    except Exception as e:
+        st.error(f"Could not check teamwork submission: {e}")
+        return
+
+    if st.button("🏆 View Team Results"):
+        nav_to('certify_and_results')
     
     return
 
@@ -1438,7 +1457,7 @@ def page_teamwork_survey():
 def page_certify_and_results():
     st.header("Certification & Combined Results")
     st.write("Make sure the simulation ran and the teamwork form is complete.")
-    
+
     sim_id   = st.session_state.get("simulation_id")
 
     # 1) Has the supervisor actually submitted the TEAM form?
