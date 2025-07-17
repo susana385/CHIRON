@@ -2535,7 +2535,7 @@ def page_running_simulations():
                     elif flat_questions ==  b3 + b4 + b5:
                         dm_stage, current_decision_index = 6, rel_idx + 1
                     elif flat_questions == b6:
-                        dm_stage, current_decision_index = 8, rel_idx + 1
+                        dm_stage, current_decision_index = 10, rel_idx + 1
                     else:
                         dm_stage, current_decision_index = 12, rel_idx + 1
 
