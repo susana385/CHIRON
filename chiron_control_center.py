@@ -2428,8 +2428,19 @@ def page_running_simulations():
                     inject_marker  = "Inject 4"
 
                 elif cond3:
-                    flat_questions = b6
-                    inject_marker = flat_questions[0]["inject"] if flat_questions else None
+                    #flat_questions = b6
+                    inject_marker  = flat_questions[0]["inject"] if flat_questions else None
+
+                    # And crucially, map it to the correct DM stage— 
+                    # e.g. if you want this to be stage 8:
+                    dm_stage = 8
+                    # compute current_decision_index within b6
+                    for rel_idx, q in enumerate(flat_questions):
+                        if normalize(q["inject"]) == next_step:
+                            current_decision_index = rel_idx + 1
+                            break
+                    else:
+                        current_decision_index = None
 
                 else:
                     inject_marker  = None
