@@ -24,8 +24,6 @@ from reportlab.lib.colors import HexColor
 from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
 
-auth = supabase.auth
-
 st.set_page_config(
     page_title="CHIRON Control Center",
     layout="wide",
@@ -34,7 +32,11 @@ st.set_page_config(
 # local fallback
 load_dotenv()
 
+url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
 
+supabase = create_client(url, key)
+auth = supabase.auth
 
 # Build a global map: inject ID → question text
 # build a map from inject → generic prompt, and (inject, role) → role-specific prompt
