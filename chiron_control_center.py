@@ -2422,13 +2422,16 @@ def page_running_simulations():
 
                 elif cond2 and not cond3[3]:
                     # answered 7,13,23 but not 34
-                    flat_questions = b3 + b4 + b5
+                    flat_questions = b3
                     inject_marker  = "Inject 3"
+                elif cond2 and not cond3[3]:
+                    flat_questions = b4 + b5
+                    inject_marker  = "Inject 4"
 
                 else:
                     # all four FD decisions done
                     flat_questions = b6
-                    inject_marker  = "Inject 4"
+
                 
 
                 all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
