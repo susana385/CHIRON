@@ -2433,7 +2433,7 @@ def page_running_simulations():
                     flat_questions = b6
 
                 
-
+                all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
                 #all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
                 
 
@@ -2526,7 +2526,7 @@ def page_running_simulations():
                     else:
                         dm_stage, current_decision_index = 12, rel_idx + 1
 
-                all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
+        
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
                 # st.write("ALL_STEPS:", all_steps)
