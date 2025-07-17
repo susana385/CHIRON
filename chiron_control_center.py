@@ -2558,8 +2558,8 @@ def page_running_simulations():
                 # st.write("DEBUG normalized answered prefixes:", answered)
                 # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
 
-                # st.write("DEBUG stage", dm_stage)
-                # st.write("DEBUG current_decision_index", current_decision_index)
+                st.write("DEBUG stage", dm_stage)
+                st.write("DEBUG current_decision_index", current_decision_index)
                 #st.write("DEBUG flat_questions", flat_questions)
                 # st.write ("DEBUG b2",b2)
 
