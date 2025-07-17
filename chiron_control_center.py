@@ -2567,8 +2567,9 @@ def page_running_simulations():
                 #       st.write("🔍 currently at an inject, no question index to show")
                 
                 ans12 = get_role_decision_answer("Decision 12", st.session_state.dm_role)
+                ans22 = get_role_decision_answer("Decision 22", st.session_state.dm_role)
 
-                if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None):
+                if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None) or (st.session_state.dm_role != "FD" and ans22 is not None and ans23 is None):
                     st.warning("⏳ Wait for FD to answer Decision 13 to try to join again")
                     return
 
