@@ -28,16 +28,11 @@ def get_score(choice: str) -> int:
 def page_one():
     st.title("Team Emergency Assessment Measure (TEAM)")
     st.write("""
-    **Welcome!**
-
     This tool lets you, the supervisor, evaluate your team's 
     performance during a simulation on three domains:  
     Leadership, Teamwork, and Task Management.
     """)
-    st.session_state.supervisor = st.radio(
-        "Supervisor:",
-        ["Supervisor 1", "Supervisor 2"]
-    )
+    
     if st.button("Start the Questionnaire"):
         st.session_state.teamwork_page = 2
 
@@ -50,7 +45,7 @@ def page_two():
     if not sim_id or not sim_name:
         st.error("❌ Simulation context missing — please join a simulation first.")
         return
-    st.subheader(f"TEAM Questionnaire — {st.session_state.supervisor}")
+    st.subheader(f"TEAM Questionnaire")
 
     st.markdown("### 🧭 Leadership")
     st.markdown("_It is assumed that the leader is either designated, has emerged, or is the most senior — if no leader emerges allocate a ‘0’ to questions 1 & 2._")

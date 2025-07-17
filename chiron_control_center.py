@@ -74,7 +74,10 @@ def page_login():
     ])
 
     st.title("Welcome to CHIRON System")
-    st.write("This system lets you **participate in**, **supervise**, **manage** or **administer** CHIRON simulations.")
+    st.write("""
+    Welcome
+    Join us to power autonomous medical decisions, wherever the mission takes you!
+    """)
 
     st.header("Login or Sign Up")
     email    = st.text_input("Email")
@@ -133,7 +136,7 @@ def page_login():
                     st.error("You must enter a profile type code.")
                 else:
                     code = int(role_code)
-                    role_map = {1:"administrator", 2:"supervisor", 3:"manager", 1234:"participant"}
+                    role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
                     if code not in role_map:
                         st.error("Invalid code.")
                     else:
@@ -1301,29 +1304,7 @@ def page_teamwork_survey():
     if st.session_state.teamwork_submitted:
         st.success("✅ Supervisor scores saved.")
         nav_to('certify_and_results')
-    #     sim    = st.session_state.simulation_name
-    #     supv   = st.session_state.supervisor               # the supervisor’s identifier
-    #     comments = st.session_state.get("teamwork_feedback_text", "")
-    #     scores   = st.session_state.get("teamwork_scores", {})
-
-    #     # Build the payload matching your `supervisor` table columns
-    #     payload = {
-    #         "simulation_name": sim,
-    #         "leadership":            scores.get("Leadership"),
-    #         "teamwork":              scores.get("Teamwork"),
-    #         "task_management":       scores.get("Task_Management"),
-    #         "overall":               scores.get("Overall"),
-    #         "total_teamwork":        scores.get("Total_Teamwork"),
-    #         "comments":              comments,
-    #         "situation_awareness_comments": scores.get("Situation_Awareness_Comments")
-    #     }
-    #     # Insert into Supabase
-    #     try:
-    #         supabase.from_("supervisor").insert(payload).execute()
-    #     except Exception as e:
-    #         st.error(f"❌ Failed to save supervisor scores: {e}")
-    #     else:
-
+        
     if st.button("Back"):
         nav_to("menu_iniciar_simulação_supervisor")
 
@@ -1678,7 +1659,7 @@ def page_team_results():
 
 
 def page_simulation_menu():
-    st.header("Supervisor Dashboard")
+    st.header("Supervisor Menu")
 
     sim_id = st.session_state.get("simulation_id")
     if not sim_id:
@@ -1688,6 +1669,9 @@ def page_simulation_menu():
     # 1) Show the simulation name
     st.subheader(f"Simulation: **{st.session_state.simulation_name}**")
 
+    if st.button("Go back to the Main Menu"):
+        nav_to("welcome")
+        return
 
     if st.button("▶️ Go to Vital-Signs Dashboard"):
             nav_to("dashboard")
