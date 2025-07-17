@@ -23,6 +23,7 @@ from reportlab.lib import colors
 from reportlab.lib.colors import HexColor
 from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
+from supabase import create_client
 
 st.set_page_config(
     page_title="CHIRON Control Center",
