@@ -75,8 +75,7 @@ def page_login():
 
     st.title("Welcome to CHIRON System")
     st.write("""
-    Welcome
-    Join us to power autonomous medical decisions, wherever the mission takes you!
+    CCHIRON towards the future of Deep-Space Medical Decision-Making!
     """)
 
     st.header("Login or Sign Up")
@@ -673,15 +672,19 @@ def page_dm_questionnaire(key_prefix: str = ""):
     if st.session_state.dm_stage == 13 and st.button("Submit and Continue", key=f"{key_prefix}-submit_continue"):
         # 1) mark this participant finished
         now = datetime.utcnow().isoformat()
-        try:
-            supabase \
-            .from_("participant") \
-            .update({"finished_at": now}) \
-            .eq("id", part_id) \
+        res = (
+            supabase
+            .from_("participant")
+            .update({"finished_at": now})
+            .eq("id", part_id)
             .execute()
-        except Exception as e:
-            st.error(f"❌ Couldn’t record participant finish time: {e}")
-            return
+        )
+        if res.error:
+            st.error(f"❌ Supabase update failed: {res.error.message}")
+        elif not res.data:
+            st.warning("⚠️ No rows were updated. Check that `part_id` is correct.")
+        else:
+            st.success("✅ finish time recorded!")
 
         # 4) onward to individual results
         nav_to("individual_results")
@@ -1314,17 +1317,17 @@ def page_dashboard():
         st.error(f"Could not check teamwork submission: {e}")
         return
     
-    sim = (
-        supabase
-        .from_("simulation")
-        .select("status")
-        .eq("id", st.session_state.simulation_id)
-        .maybe_single()
-        .execute()
-    )
-    if not sim.data or sim.data.get("status") != "finished":
-        st.info("Waiting for the simulation to be finnished.")
-        return
+    # sim = (
+    #     supabase
+    #     .from_("simulation")
+    #     .select("status")
+    #     .eq("id", st.session_state.simulation_id)
+    #     .maybe_single()
+    #     .execute()
+    # )
+    # if not sim.data or sim.data.get("status") != "finished":
+    #     st.info("Waiting for the simulation to be finnished.")
+    #     return
 
     if st.button("🏆 View Team Results"):
         nav_to('certify_and_results')
