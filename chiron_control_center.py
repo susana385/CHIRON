@@ -2402,6 +2402,7 @@ def page_running_simulations():
                 cond2 = (ans7,  ans13, ans23)      # have we done 7,13 & 23 yet?
                 cond3 = (ans7,  ans13, ans23, ans34)  # have we done all four?
                 ans28 = get_role_decision_answer("Decision 28", st.session_state.dm_role)
+                ans32 = get_role_decision_answer("Decision 32", st.session_state.dm_role)
 
                 # 3) Rebuild each block based on those conds
                 b1 = decisions1to13
@@ -2429,8 +2430,12 @@ def page_running_simulations():
                     inject_marker  = "Inject 3"
 
                 elif ans28 and not ans34:
-                    flat_questions = b4 + b5
+                    flat_questions = b4
                     inject_marker  = "Inject 4"
+
+                elif ans32 and not ans34:
+                    flat_questions = b5
+                    inject_marker  = flat_questions[0]["inject"] if flat_questions else None
 
                 elif cond3:
                     flat_questions = b6
@@ -2532,10 +2537,15 @@ def page_running_simulations():
                         dm_stage, current_decision_index = 2, rel_idx + 1
                     elif flat_questions == b2:
                         dm_stage, current_decision_index = 4, rel_idx + 1
-                    elif flat_questions ==  b3 + b4 + b5:
+                    elif flat_questions ==  b3:
                         dm_stage, current_decision_index = 6, rel_idx + 1
+                    elif flat_questions ==  b4:
+                        dm_stage, current_decision_index = 8, rel_idx + 1
+                    elif flat_questions == b5:
+                        dm_stage, current_decision_index = 9, rel_idx + 1
                     elif flat_questions == b6:
                         dm_stage, current_decision_index = 10, rel_idx + 1
+                        st.session_state.loaded_35to43 = True
                     else:
                         dm_stage, current_decision_index = 12, rel_idx + 1
 
