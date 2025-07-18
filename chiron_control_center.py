@@ -1978,7 +1978,7 @@ def page_individual_results():
             .from_("max_scores")
             .select("category,max_value")
             .eq("role", dm_role)
-            .ilike("scenario_code", scenario_code)
+            .ilike("scenario_code", f"%{scenario_code}%")
             # .ilike("scenario_code", f"%13({a13})%")
             # .ilike("scenario_code", f"%23({a23})%")
             # .ilike("scenario_code", f"%34({a34})%")
