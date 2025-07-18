@@ -1595,7 +1595,13 @@ def page_team_results():
         st.error("❌ Could not determine scenario code: missing one of FD’s key decisions.")
         return
 
-    scenario_code = f"7({a7})&13({a13})&23({a23})&34({a34})"
+    def prefix(ans: str) -> str:
+        return ans.split(".")[0].strip().lower()
+    
+    p7,  p13  = prefix(a7),  prefix(a13)
+    p23, p34 = prefix(a23), prefix(a34)
+        # build exactly “b7,c13,b23,b34”
+    scenario_code = f"{p7}7,{p13}13,{p23}23,{p34}34"
 
     if ind_data:
         df_ind = pd.DataFrame(ind_data)
@@ -1614,10 +1620,7 @@ def page_team_results():
                 supabase
                 .from_("max_scores")
                 .select("role,category,max_value")
-                .ilike("scenario_code", f"%7({a7})%")
-                .ilike("scenario_code", f"%13({a13})%")
-                .ilike("scenario_code", f"%23({a23})%")
-                .ilike("scenario_code", f"%34({a34})%")
+                .ilike("scenario_code", scenario_code)
                 .execute()
             )
             ms_data = ms.data or []
@@ -1971,14 +1974,13 @@ def page_individual_results():
     proc_subtot  = float(ind["procedural_knowledge_total"])
     actual_total = float(ind["score"])
 
-    debug_max = (
-    supabase
-      .from_("max_scores")
-      .select("scenario_code")
-      .eq("role", "FS")
-      .execute()
-    )
-    st.write("FS scenario_codes:", [r["scenario_code"] for r in debug_max.data or []])
+    def prefix(ans: str) -> str:
+        return ans.split(".")[0].strip().lower()
+    
+    p7,  p13  = prefix(a7),  prefix(a13)
+    p23, p34 = prefix(a23), prefix(a34)
+        # build exactly “b7,c13,b23,b34”
+    scenario_code = f"{p7}7,{p13}13,{p23}23,{p34}34"
 
 
     # Max scores
@@ -1988,7 +1990,7 @@ def page_individual_results():
             .from_("max_scores")
             .select("category,max_value")
             .eq("role", dm_role)
-            .ilike("scenario_code", f"%{scenario_code}%")
+            .ilike("scenario_code", scenario_code)
             # .ilike("scenario_code", f"%13({a13})%")
             # .ilike("scenario_code", f"%23({a23})%")
             # .ilike("scenario_code", f"%34({a34})%")

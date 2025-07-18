@@ -8,7 +8,7 @@ from questionnaire1 import (
     decisions14to23, decisions24to28,
     decisions29to32, decisions33to34, decisions35to43,
 )
-# from dotenv import load_dotenv
+#from dotenv import load_dotenv
 # import os
 
 # # point load_dotenv at your env-file
@@ -18,7 +18,7 @@ from questionnaire1 import (
 # url = os.getenv("SUPABASE_URL")
 # key = os.getenv("SUPABASE_KEY")
 
-# load_dotenv(dotenv_path="supabase.env")
+#load_dotenv(dotenv_path="supabase.env")
 # import os
 # print("URL:", os.getenv("SUPABASE_URL"))
 # print("KEY:", os.getenv("SUPABASE_KEY"))
@@ -96,9 +96,14 @@ def max_for_questions(questions):
 
 to_upsert = []
 
-# 4) Build all 72 scenarios
+def prefix(ans: str) -> str:
+    return ans.split(".")[0].strip().lower()
+
 for a7, a13, a23, a34 in product(opt7, opt13, opt23, opt34):
-    code = f"7({a7})&13({a13})&23({a23})&34({a34})"
+    p7,  p13  = prefix(a7),  prefix(a13)
+    p23, p34 = prefix(a23), prefix(a34)
+    # build exactly “b7,c13,b23,b34”
+    code = f"{p7}7,{p13}13,{p23}23,{p34}34"
     # assemble full question list
     qs = []
     qs += decisions1to13
