@@ -2440,7 +2440,7 @@ def page_running_simulations():
                 elif cond3:
                     flat_questions = b6
                     inject_marker  = flat_questions[0]["inject"] if flat_questions else None
-                    dm_stage = 8
+                    st.session_state.loaded_35to43 = True
 
                 else:
                     inject_marker  = None
