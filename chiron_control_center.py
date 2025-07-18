@@ -1971,6 +1971,16 @@ def page_individual_results():
     proc_subtot  = float(ind["procedural_knowledge_total"])
     actual_total = float(ind["score"])
 
+    debug_max = (
+    supabase
+      .from_("max_scores")
+      .select("scenario_code")
+      .eq("role", "FS")
+      .execute()
+    )
+    st.write("FS scenario_codes:", [r["scenario_code"] for r in debug_max.data or []])
+
+
     # Max scores
     try:
         max_res = (
