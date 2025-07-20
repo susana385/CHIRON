@@ -95,14 +95,9 @@ def load_teamwork(sim_id):
         .execute()
         .data)
 
-def sync_simulation_state(sim_id: str, force: bool = False):
+def sync_simulation_state(sim_id: str):
     now = time.time()
     # Debounce adicional (opcional)
-    if (not force) and (now - st.session_state.get("last_snapshot_ts", 0) < 0.4):
-        return
-    last_id = st.session_state.get("last_answer_id", 0) or 0
-    snap = fetch_snapshot(sim_id, last_id)
-
     if now - st.session_state.last_snapshot_ts < 0.4:
         return
     snap = fetch_snapshot(sim_id, st.session_state.last_answer_id)
@@ -2488,36 +2483,6 @@ def page_individual_results():
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
 
-def prepare_join(sim_id: int, sim_name: str):
-    """
-    Reset local caches and do a first full snapshot sync so que o utilizador
-    entra já com answers_cache e participants preenchidos.
-    """
-    # Guardar identificação
-    st.session_state.simulation_id   = sim_id
-    st.session_state.simulation_name = sim_name
-
-    # Limpar caches/deltas
-    st.session_state.answers_cache        = {}
-    st.session_state.answers_delta        = []
-    st.session_state.participants_cache   = {}
-    st.session_state.last_answer_id       = 0
-    st.session_state.last_snapshot_ts     = 0.0
-    st.session_state.dm_stage             = 0
-    st.session_state.current_decision_index = None
-    st.session_state.loaded_35to43        = False
-
-    # (se guardares decisões FD ou mapa de texto)
-    st.session_state.answers.setdefault("Decision 7",  None)
-    st.session_state.answers.setdefault("Decision 13", None)
-    st.session_state.answers.setdefault("Decision 23", None)
-    st.session_state.answers.setdefault("Decision 34", None)
-
-    # Forçar primeira sincronização (full)
-    try:
-        sync_simulation_state(sim_id, force=True)
-    except Exception as e:
-        st.error(f"❌ Falha ao sincronizar estado inicial: {e}")
 
 
 def page_running_simulations():
@@ -2606,7 +2571,6 @@ def page_running_simulations():
             st.session_state.simulation_id   = sim["id"]
             st.session_state.simulation_name = sim["name"]
             role = st.session_state.user_role
-            prepare_join(sim["id"], sim["name"])
 
             if role in ("supervisor", "administrator"):
                 nav_to("menu_iniciar_simulação_supervisor")
@@ -2634,220 +2598,219 @@ def page_running_simulations():
                 st.session_state.dm_role        = part["participant_role"]
 
                 # rebuild the question‐sequence for this scenario
-                # from questionnaire1 import (
-                #     decisions1to13, decisions14to23, decisions24to28,
-                #     decisions29to32, decisions33to34, decisions35to43,
-                #     get_role_decision_answer
-                # )
-                # ans7  = get_role_decision_answer("Decision 7",  "FD")
-                # ans13 = get_role_decision_answer("Decision 13", "FD")
-                # ans23 = get_role_decision_answer("Decision 23", "FD")
-                # ans34 = get_role_decision_answer("Decision 34", "FD")
+                from questionnaire1 import (
+                    decisions1to13, decisions14to23, decisions24to28,
+                    decisions29to32, decisions33to34, decisions35to43,
+                    get_role_decision_answer
+                )
+                ans7  = get_role_decision_answer("Decision 7",  "FD")
+                ans13 = get_role_decision_answer("Decision 13", "FD")
+                ans23 = get_role_decision_answer("Decision 23", "FD")
+                ans34 = get_role_decision_answer("Decision 34", "FD")
 
-                # # 2) Build the three “conds” you care about
-                # cond1 = (ans7,  ans13)             # have we done 7 & 13 yet?
-                # cond2 = (ans7,  ans13, ans23)      # have we done 7,13 & 23 yet?
-                # cond3 = (ans7,  ans13, ans23, ans34)  # have we done all four?
-                # ans28 = get_role_decision_answer("Decision 28", st.session_state.dm_role)
-                # ans32 = get_role_decision_answer("Decision 32", st.session_state.dm_role)
+                # 2) Build the three “conds” you care about
+                cond1 = (ans7,  ans13)             # have we done 7 & 13 yet?
+                cond2 = (ans7,  ans13, ans23)      # have we done 7,13 & 23 yet?
+                cond3 = (ans7,  ans13, ans23, ans34)  # have we done all four?
+                ans28 = get_role_decision_answer("Decision 28", st.session_state.dm_role)
+                ans32 = get_role_decision_answer("Decision 32", st.session_state.dm_role)
 
-                # # 3) Rebuild each block based on those conds
-                # b1 = decisions1to13
-                # b2 = decisions14to23.get(cond1, [])
-                # b3 = decisions24to28.get(cond1, [])
-                # b4 = decisions29to32.get(cond1, [])
-                # b5 = decisions33to34.get(cond2, [])
-                # b6 = decisions35to43.get(cond3, [])
+                # 3) Rebuild each block based on those conds
+                b1 = decisions1to13
+                b2 = decisions14to23.get(cond1, [])
+                b3 = decisions24to28.get(cond1, [])
+                b4 = decisions29to32.get(cond1, [])
+                b5 = decisions33to34.get(cond2, [])
+                b6 = decisions35to43.get(cond3, [])
 
-                # next_step = None
-                # current_decision_index = None
-                # q = None
+                next_step = None
+                current_decision_index = None
+                q = None
 
 
-                # if not all(cond1):
-                #     flat_questions = b1
-                #     inject_marker  = "Initial Situation" if not any(cond1) else "Inject 1"
+                if not all(cond1):
+                    flat_questions = b1
+                    inject_marker  = "Initial Situation" if not any(cond1) else "Inject 1"
 
-                # elif cond1 and not cond2[2]:
-                #     flat_questions = b2
-                #     inject_marker  = "Inject 2"
+                elif cond1 and not cond2[2]:
+                    flat_questions = b2
+                    inject_marker  = "Inject 2"
 
-                # elif cond2 and not ans28:
-                #     flat_questions = b3
-                #     inject_marker  = "Inject 3"
+                elif cond2 and not ans28:
+                    flat_questions = b3
+                    inject_marker  = "Inject 3"
 
-                # elif ans28 and not ans34:
-                #     flat_questions = b4
-                #     inject_marker  = "Inject 4"
+                elif ans28 and not ans34:
+                    flat_questions = b4
+                    inject_marker  = "Inject 4"
 
-                # elif ans32 and not ans34:
-                #     flat_questions = b5
-                #     inject_marker  = flat_questions[0]["inject"] if flat_questions else None
+                elif ans32 and not ans34:
+                    flat_questions = b5
+                    inject_marker  = flat_questions[0]["inject"] if flat_questions else None
 
-                # elif cond3:
-                #     flat_questions = b6
-                #     inject_marker  = flat_questions[0]["inject"] if flat_questions else None
-                #     st.session_state.loaded_35to43 = True
+                elif cond3:
+                    flat_questions = b6
+                    inject_marker  = flat_questions[0]["inject"] if flat_questions else None
+                    st.session_state.loaded_35to43 = True
 
-                # else:
-                #     inject_marker  = None
+                else:
+                    inject_marker  = None
 
                 
-                # #all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
-                # if inject_marker:
-                #     all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
-                # else:
-                #     all_steps = [q["inject"] for q in flat_questions]
+                #all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
+                if inject_marker:
+                    all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
+                else:
+                    all_steps = [q["inject"] for q in flat_questions]
 
 
 
-                # # 3) get the very last answered inject from your answers table
-                # ans_resp = (
-                #     supabase
-                #     .from_("answers")
-                #     .select("inject")
-                #     .eq("id_simulation",  sim["id"])
-                #     .eq("id_participant", part["id"])
-                #     .execute()
-                # )
-                # # helper to normalize any step-label into just its “prefix” (Decision X or Inject Y)
-                # import re
+                # 3) get the very last answered inject from your answers table
+                ans_resp = (
+                    supabase
+                    .from_("answers")
+                    .select("inject")
+                    .eq("id_simulation",  sim["id"])
+                    .eq("id_participant", part["id"])
+                    .execute()
+                )
+                # helper to normalize any step-label into just its “prefix” (Decision X or Inject Y)
+                import re
 
-                # def normalize(key: str) -> str:
-                #     key = key.strip()
-                #     m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', key)
-                #     return m.group(1) if m else key
+                def normalize(key: str) -> str:
+                    key = key.strip()
+                    m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', key)
+                    return m.group(1) if m else key
                 
-                # # build a set of the step-prefixes they’ve already seen
-                # rows = getattr(ans_resp, "data", []) or []
-                # answered_raw = [r["inject"] for r in rows]
-                # answered      = { normalize(r["inject"]) for r in rows }
+                # build a set of the step-prefixes they’ve already seen
+                rows = getattr(ans_resp, "data", []) or []
+                answered_raw = [r["inject"] for r in rows]
+                answered      = { normalize(r["inject"]) for r in rows }
 
-                # # also mark off any FD‑only decision they did:
-                # KEY = { normalize(d) for d in ["Decision 7","Decision 13","Decision 23","Decision 34"] }
-                # for fd_pref in KEY:
-                #     if get_role_decision_answer(fd_pref, "FD") is not None:
-                #         answered.add(fd_pref)
+                # also mark off any FD‑only decision they did:
+                KEY = { normalize(d) for d in ["Decision 7","Decision 13","Decision 23","Decision 34"] }
+                for fd_pref in KEY:
+                    if get_role_decision_answer(fd_pref, "FD") is not None:
+                        answered.add(fd_pref)
 
-                # if st.session_state.dm_role != "FD":
-                #     answered |= KEY
+                if st.session_state.dm_role != "FD":
+                    answered |= KEY
 
 
-                # # after flat_questions…
-                # scenario_prefixes = {
-                #     normalize(d["inject"])
-                #     for d in flat_questions
-                # }
+                # after flat_questions…
+                scenario_prefixes = {
+                    normalize(d["inject"])
+                    for d in flat_questions
+                }
 
-                # inspect = []                
-                # next_step = None
-                # for step in all_steps:
-                #     if normalize(step) not in answered:
-                #         next_step = normalize(step)
-                #         inspect.append({
-                #         "step": step,
-                #         "pref": next_step,
-                #         "answered?": next_step in answered,
-                #         "in scenario?": (not next_step.startswith("Decision")) or (next_step in scenario_prefixes)
-                #     })
-                #         break
+                inspect = []                
+                next_step = None
+                for step in all_steps:
+                    if normalize(step) not in answered:
+                        next_step = normalize(step)
+                        inspect.append({
+                        "step": step,
+                        "pref": next_step,
+                        "answered?": next_step in answered,
+                        "in scenario?": (not next_step.startswith("Decision")) or (next_step in scenario_prefixes)
+                    })
+                        break
 
-                # st.write("DEBUG step inspection:", inspect)
+                st.write("DEBUG step inspection:", inspect)
 
-                # # special-case the Initial Situation inject
-                # if next_step == "Initial Situation":
-                #     dm_stage = 0
-                #     current_decision_index = None
+                # special-case the Initial Situation inject
+                if next_step == "Initial Situation":
+                    dm_stage = 0
+                    current_decision_index = None
 
-                # elif next_step is None:
-                #     dm_stage = 12
-                #     current_decision_index = None
+                elif next_step is None:
+                    dm_stage = 12
+                    current_decision_index = None
 
-                # elif next_step.startswith("Inject"):
-                #     # e.g. "Inject 2" → stage 3
-                #     dm_stage = int(next_step.split()[1]) + 1
-                #     current_decision_index = None
+                elif next_step.startswith("Inject"):
+                    # e.g. "Inject 2" → stage 3
+                    dm_stage = int(next_step.split()[1]) + 1
+                    current_decision_index = None
 
-                # else:
-                #     # it really is a Decision X
-                #     # find it in flat_questions…
-                #     for rel_idx, q in enumerate(flat_questions):
-                #         if normalize(q["inject"]) == next_step:
-                #             rel = rel_idx + 1
-                #             break
-                #     else:
-                #         st.error(f"⚠️ Couldn't locate {next_step!r} in flat_questions")
-                #         return
+                else:
+                    # it really is a Decision X
+                    # find it in flat_questions…
+                    for rel_idx, q in enumerate(flat_questions):
+                        if normalize(q["inject"]) == next_step:
+                            rel = rel_idx + 1
+                            break
+                    else:
+                        st.error(f"⚠️ Couldn't locate {next_step!r} in flat_questions")
+                        return
 
-                #     # decide your stage + index
-                #     if flat_questions == b1:
-                #         dm_stage, current_decision_index = 2, rel_idx + 1
-                #     elif flat_questions == b2:
-                #         dm_stage, current_decision_index = 4, rel_idx + 1
-                #     elif flat_questions ==  b3:
-                #         dm_stage, current_decision_index = 6, rel_idx + 1
-                #     elif flat_questions ==  b4:
-                #         dm_stage, current_decision_index = 8, rel_idx + 1
-                #     elif flat_questions == b5:
-                #         dm_stage, current_decision_index = 9, rel_idx + 1
-                #     elif flat_questions == b6:
-                #         dm_stage, current_decision_index = 10, rel_idx + 1
-                #         st.session_state.loaded_35to43 = True
-                #     else:
-                #         dm_stage, current_decision_index = 12, rel_idx + 1
+                    # decide your stage + index
+                    if flat_questions == b1:
+                        dm_stage, current_decision_index = 2, rel_idx + 1
+                    elif flat_questions == b2:
+                        dm_stage, current_decision_index = 4, rel_idx + 1
+                    elif flat_questions ==  b3:
+                        dm_stage, current_decision_index = 6, rel_idx + 1
+                    elif flat_questions ==  b4:
+                        dm_stage, current_decision_index = 8, rel_idx + 1
+                    elif flat_questions == b5:
+                        dm_stage, current_decision_index = 9, rel_idx + 1
+                    elif flat_questions == b6:
+                        dm_stage, current_decision_index = 10, rel_idx + 1
+                        st.session_state.loaded_35to43 = True
+                    else:
+                        dm_stage, current_decision_index = 12, rel_idx + 1
 
         
-                # # (plus mark off FD‐only decisions the same way you already do…)
+                # (plus mark off FD‐only decisions the same way you already do…)
                 
-                # st.write("ALL_STEPS:", all_steps)
-                # st.write("ANSWERED:", answered)
-                # st.write("next_step:", next_step)
+                st.write("ALL_STEPS:", all_steps)
+                st.write("ANSWERED:", answered)
+                st.write("next_step:", next_step)
 
 
 
-                # # 6) stash and navigate
-                # # sanity check:
-                # # sanity check
-                # if not flat_questions or not isinstance(flat_questions[0], dict):
-                #     st.error("⚠️ `all_questions` must be a list of dicts but isn’t – please check your decision blocks.")
-                #     return
+                # 6) stash and navigate
+                # sanity check:
+                # sanity check
+                if not flat_questions or not isinstance(flat_questions[0], dict):
+                    st.error("⚠️ `all_questions` must be a list of dicts but isn’t – please check your decision blocks.")
+                    return
                 
-                # # st.write("DEBUG chosen next_step:", next_step)
-                # # st.write("DEBUG dm_stage, current_decision_index:", dm_stage, current_decision_index)
-                # # st.write("DEBUG all_steps:", all_steps)
-                # # st.write("DEBUG answered prefixes:", answered)
-                # # st.write("DEBUG cond (FD key decisions):", cond)
-                # # st.write("DEBUG raw answers payload:", ans_resp.data)
-                # # st.write("DEBUG raw_ans list of inject labels:", raw_ans)
-                # # st.write("DEBUG normalized answered prefixes:", answered)
-                # # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
+                # st.write("DEBUG chosen next_step:", next_step)
+                # st.write("DEBUG dm_stage, current_decision_index:", dm_stage, current_decision_index)
+                # st.write("DEBUG all_steps:", all_steps)
+                # st.write("DEBUG answered prefixes:", answered)
+                # st.write("DEBUG cond (FD key decisions):", cond)
+                # st.write("DEBUG raw answers payload:", ans_resp.data)
+                # st.write("DEBUG raw_ans list of inject labels:", raw_ans)
+                # st.write("DEBUG normalized answered prefixes:", answered)
+                # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
 
-                # st.write("DEBUG stage", dm_stage)
-                # st.write("DEBUG current_decision_index", current_decision_index)
-                # #st.write("DEBUG flat_questions", flat_questions)
-                # # st.write ("DEBUG b2",b2)
+                st.write("DEBUG stage", dm_stage)
+                st.write("DEBUG current_decision_index", current_decision_index)
+                #st.write("DEBUG flat_questions", flat_questions)
+                # st.write ("DEBUG b2",b2)
 
 
-                # st.session_state.all_questions          = flat_questions
-                # st.session_state.current_decision_index = current_decision_index
-                # st.session_state.dm_stage               = dm_stage
-                # # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
-                # idx = st.session_state.current_decision_index
-                # st.write("🔍 debug current_decision_index:", idx)
-                # if idx is not None:
-                #     q = st.session_state.all_questions[idx]
-                #     st.write("🔍 debug question:", q["inject"])
-                # else:
-                #     st.write("🔍 currently at an inject, no question index to show")
+                st.session_state.all_questions          = flat_questions
+                st.session_state.current_decision_index = current_decision_index
+                st.session_state.dm_stage               = dm_stage
+                # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
+                idx = st.session_state.current_decision_index
+                st.write("🔍 debug current_decision_index:", idx)
+                if idx is not None:
+                    q = st.session_state.all_questions[idx]
+                    st.write("🔍 debug question:", q["inject"])
+                else:
+                    st.write("🔍 currently at an inject, no question index to show")
                 
-                # ans12 = get_role_decision_answer("Decision 12", st.session_state.dm_role)
-                # ans22 = get_role_decision_answer("Decision 22", st.session_state.dm_role)
+                ans12 = get_role_decision_answer("Decision 12", st.session_state.dm_role)
+                ans22 = get_role_decision_answer("Decision 22", st.session_state.dm_role)
 
-                # if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None) or (st.session_state.dm_role != "FD" and ans22 is not None and ans23 is None):
-                #     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
-                #     return
-                
-                sync_simulation_state(sim["id"])
+                if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None) or (st.session_state.dm_role != "FD" and ans22 is not None and ans23 is None):
+                    st.warning("⏳ Wait for FD to answer the key decision to try to join again")
+                    return
+
                 nav_to("dm_questionnaire")
                 return
 
