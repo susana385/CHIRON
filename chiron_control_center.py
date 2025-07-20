@@ -647,33 +647,46 @@ def participant_new_simulation():
         return
 
     sim = sims[0]
-    claimed = len(sim.get("roles_logged") or [])
-    if claimed >= MAX_ROLES:
-        st.info("The newest pending simulation is already full — please wait for a new one.")
-        return
+    claimed        = len(sim.get("roles_logged") or [])
+    is_full        = claimed >= MAX_ROLES
+    current_sim_id = st.session_state.get("simulation_id")
 
-    st.subheader("Join the newest pending simulation:")
-    created_at = sim.get("created_at", "")
-    st.write(f"**{sim['name']}**  \nCreated at: `{created_at}`  \nRoles claimed: **{claimed}/{MAX_ROLES}**")
+    # Já estou noutro sim (diferente deste)?
+    in_other = (current_sim_id is not None) and (current_sim_id != sim["id"])
 
-    # Prevent accidental rejoin if already in another simulation
-    already_in = st.session_state.get("simulation_id") and st.session_state.simulation_id != sim["id"]
-    disabled_join = already_in
-    help_text = "You are already in another simulation. Leave it first." if already_in else None
+    # Disabled final TEM de ser bool
+    disabled_join = bool(is_full or in_other)
 
+    if is_full:
+        help_text = f"Simulation full ({claimed}/{MAX_ROLES})."
+    elif in_other:
+        help_text = "You are already in another simulation. Leave it first."
+    else:
+        help_text = f"{claimed}/{MAX_ROLES} roles claimed."
+
+    # Debug (temporário)
+    st.write("DEBUG claimed:", claimed)
+    st.write("DEBUG is_full:", is_full)
+    st.write("DEBUG current_sim_id:", current_sim_id)
+    st.write("DEBUG in_other:", in_other)
     st.write("DEBUG disabled_join:", disabled_join, type(disabled_join))
     st.write("DEBUG help_text:", help_text, type(help_text))
 
-
     if st.button("Join this Simulation", disabled=disabled_join, help=help_text):
-        # reset delta caches to avoid leaking old answers context
-        st.session_state.answers_cache      = []
-        st.session_state.last_answer_id     = 0
-        st.session_state.participants_cache = []
-        st.session_state.last_snapshot_ts   = 0.0
-        st.session_state.simulation_id      = sim["id"]
-        st.session_state.simulation_name    = sim["name"]
+        # Reset per-simulation caches
+        st.session_state.answers_cache          = []
+        st.session_state.participants_cache     = []
+        st.session_state.last_answer_id         = 0
+        st.session_state.last_snapshot_ts       = 0.0
+        st.session_state.current_decision_index = None
+        st.session_state.dm_stage               = 0
+        st.session_state.loaded_35to43          = False
+
+        st.session_state.simulation_id   = sim["id"]
+        st.session_state.simulation_name = sim["name"]
+
         nav_to("dm_role_claim")
+        return
 
 MAX_ROLES = 8
 ALL_ROLES = list(questionnaire1.roles.keys())
