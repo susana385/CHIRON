@@ -824,7 +824,7 @@ def page_dm_role_claim(key_prefix: str = ""):
             st.session_state.dm_finished = False
             nav_to("dm_questionnaire")
     else:
-        st.info(f"Waiting for all roles ({len(claimed_count)}/8 claimed)…")
+        st.info(f"Waiting for all roles ({claimed_count}/8 claimed)…")
 
 # ------------------------------------------------------- Page 4 Participant ----------------------------------------------------------
 
