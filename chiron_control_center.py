@@ -817,7 +817,7 @@ def page_dm_role_claim(key_prefix: str = ""):
         st.rerun()
 
     # 7) Fallback “waiting” UI if they somehow fall through
-    if len(claimed_count) == 8:
+    if claimed_count == 8:
         st.markdown("---")
         if st.button("▶️ Start Simulation", key=f"{key_prefix}-fallback_start"):
             st.session_state.dm_stage = 0
