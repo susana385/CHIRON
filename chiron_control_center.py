@@ -96,6 +96,12 @@ def load_teamwork(sim_id):
         .data)
 
 def sync_simulation_state(sim_id: str):
+    ss = st.session_state
+    ss.setdefault("answers_cache", [])          # deve ser lista se usas .extend
+    ss.setdefault("answers_delta", [])          # lista de novos
+    ss.setdefault("participants_cache", {})     # dict id_participant -> info
+    ss.setdefault("last_answer_id", 0)
+    ss.setdefault("last_snapshot_ts", 0.0)
     now = time.time()
     # Debounce adicional (opcional)
     if now - st.session_state.last_snapshot_ts < 0.4:
@@ -2571,6 +2577,12 @@ def page_running_simulations():
             st.session_state.simulation_id   = sim["id"]
             st.session_state.simulation_name = sim["name"]
             role = st.session_state.user_role
+            ss = st.session_state
+            ss.setdefault("answers_cache", [])          # deve ser lista se usas .extend
+            ss.setdefault("answers_delta", [])          # lista de novos
+            ss.setdefault("participants_cache", {})     # dict id_participant -> info
+            ss.setdefault("last_answer_id", 0)
+            ss.setdefault("last_snapshot_ts", 0.0)
 
             if role in ("supervisor", "administrator"):
                 nav_to("menu_iniciar_simulação_supervisor")
