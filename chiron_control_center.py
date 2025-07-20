@@ -865,18 +865,17 @@ def page_dm_questionnaire(key_prefix: str = ""):
     and not isinstance(st.session_state.get("current_decision_index"), int):
         st.session_state.current_decision_index = 1
 
-    def _cache_append_answer(row):
-        st.session_state.answers_cache.append(row)
-        st.session_state.last_answer_id = max(
-            st.session_state.last_answer_id,
-            row.get("id", st.session_state.last_answer_id)
-        )
+    # def _cache_append_answer(row):
+    #     st.session_state.answers_cache.append(row)
+    #     st.session_state.last_answer_id = max(
+    #         st.session_state.last_answer_id,
+    #         row.get("id", st.session_state.last_answer_id)
+    #     )
 
     questionnaire1.run(
         supabase,
         simulation_name=st.session_state.simulation_name,
-        role=role,
-        on_new_answer=_cache_append_answer  # ignored if not implemented
+        role=role # ignored if not implemented
     )
 
     st.session_state.roles = [
