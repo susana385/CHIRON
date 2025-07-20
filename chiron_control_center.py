@@ -650,8 +650,15 @@ def participant_new_simulation():
     claimed        = len(sim.get("roles_logged") or [])
     is_full        = claimed >= MAX_ROLES
     current_sim_id = st.session_state.get("simulation_id")
+    if claimed >= MAX_ROLES:
+        st.info("The newest pending simulation is already full — please wait for a new one.")
+        return
 
-    # Já estou noutro sim (diferente deste)?
+    st.subheader("Join the newest pending simulation:")
+    created_at = sim.get("created_at", "")
+    st.write(f"**{sim['name']}**  \nCreated at: `{created_at}`  \nRoles claimed: **{claimed}/{MAX_ROLES}**")
+
+    # Prevent accidental rejoin if already in another simulation
     in_other = (current_sim_id is not None) and (current_sim_id != sim["id"])
 
     # Disabled final TEM de ser bool
@@ -664,16 +671,9 @@ def participant_new_simulation():
     else:
         help_text = f"{claimed}/{MAX_ROLES} roles claimed."
 
-    # Debug (temporário)
-    st.write("DEBUG claimed:", claimed)
-    st.write("DEBUG is_full:", is_full)
-    st.write("DEBUG current_sim_id:", current_sim_id)
-    st.write("DEBUG in_other:", in_other)
-    st.write("DEBUG disabled_join:", disabled_join, type(disabled_join))
-    st.write("DEBUG help_text:", help_text, type(help_text))
 
     if st.button("Join this Simulation", disabled=disabled_join, help=help_text):
-        # Reset per-simulation caches
+        # reset delta caches to avoid leaking old answers context
         st.session_state.answers_cache          = []
         st.session_state.participants_cache     = []
         st.session_state.last_answer_id         = 0
@@ -681,12 +681,9 @@ def participant_new_simulation():
         st.session_state.current_decision_index = None
         st.session_state.dm_stage               = 0
         st.session_state.loaded_35to43          = False
-
-        st.session_state.simulation_id   = sim["id"]
-        st.session_state.simulation_name = sim["name"]
-
+        st.session_state.simulation_id      = sim["id"]
+        st.session_state.simulation_name    = sim["name"]
         nav_to("dm_role_claim")
-        return
 
 MAX_ROLES = 8
 ALL_ROLES = list(questionnaire1.roles.keys())
