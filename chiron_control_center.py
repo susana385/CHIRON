@@ -13,8 +13,9 @@ import io
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, Table
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
+from supabase_client import supabase, auth 
 from dotenv import load_dotenv
-from supabase_client import supabase
+#from supabase_client import supabase
 from datetime import datetime, timedelta
 from questionnaire1 import get_inject_text
 from reportlab.platypus import Table, TableStyle, Image, Paragraph, Spacer
@@ -23,7 +24,8 @@ from reportlab.lib.colors import HexColor
 from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
 from typing import Dict
-from supabase import create_client
+import time
+
 
 st.set_page_config(
     page_title="CHIRON Control Center",
@@ -33,14 +35,122 @@ st.set_page_config(
 # local fallback
 load_dotenv()
 
-url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
-key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
+# url = st.secrets.get("SUPABASE_URL") or os.getenv("SUPABASE_URL")
+# key = st.secrets.get("SUPABASE_KEY") or os.getenv("SUPABASE_KEY")
 
-supabase = create_client(url, key)
-auth = supabase.auth
+# #supabase = create_client(url, key)
+# auth = supabase.auth
 
 # Build a global map: inject ID → question text
 # build a map from inject → generic prompt, and (inject, role) → role-specific prompt
+@st.cache_data(ttl=2)
+def fetch_snapshot(sim_id: str, last_answer_id: int):
+    """
+    Vai buscar:
+      - Delta de answers com id > last_answer_id
+      - Lista completa de participants (pouca cardinalidade)
+      - Últimos vitals (limit para não crescer)
+    TTL=2 evita chamadas repetidas em reruns rapidos.
+    """
+    # ANSWERS DELTA
+    answers_delta = (supabase
+        .from_("answers")
+        .select("id,id_simulation, simulation_name, id_participant, participant_role, inject,answer_text, basic_life_support, primary_survey, secondary_survey, definitive_care, crew_roles_communication, systems_procedural_knowledge, response_time")
+        .eq("id_simulation", sim_id)
+        .gt("id", last_answer_id)
+        .order("id")
+        .execute()
+        .data or [])
+
+    # PARTICIPANTS
+    participants = (supabase
+        .from_("participant")
+        .select("id,id_simulation, id_profile,participant_role,started_at, finished_at, current_inject, current_answer")
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or [])
+
+    return {
+        "answers_delta": answers_delta,
+        "participants": participants
+    }
+
+@st.cache_data(ttl=60*10)
+def load_sim_metadata(sim_id):
+    return (supabase
+        .from_("simulation")
+        .select("id,created_at, name,roles_logged,status,started_at, finished_at")
+        .eq("id", sim_id)
+        .single()
+        .execute()
+        .data)
+
+@st.cache_data(ttl=60)
+def load_teamwork(sim_id):
+    return (supabase
+        .from_("teamwork")
+        .select("id, leadership, teamwork, total, comments, updated_at")
+        .eq("id_simulation", sim_id)
+        .maybe_single()
+        .execute()
+        .data)
+
+def sync_simulation_state(sim_id: str):
+    now = time.time()
+    # Debounce adicional (opcional)
+    if now - st.session_state.last_snapshot_ts < 0.4:
+        return
+    snap = fetch_snapshot(sim_id, st.session_state.last_answer_id)
+    delta = snap["answers_delta"]
+    if delta:
+        st.session_state.answers_cache.extend(delta)
+        st.session_state.last_answer_id = delta[-1]["id"]
+    st.session_state.participants_cache = snap["participants"]
+    st.session_state.last_snapshot_ts = now
+
+def build_answer_index():
+    # Mapa rápido: (id_participant, inject) -> answer_row
+    idx = {}
+    for a in st.session_state.answers_cache:
+        idx[(a["id_participant"], a["inject"])] = a
+    return idx
+
+def get_fd_participant_id(sim_id: str):
+    # procurar na cache de participants
+    for p in st.session_state.participants_cache:
+        if p["participant_role"] == "FD":
+            return p["id"]
+    return None
+
+def get_fd_answer_prefix(inject_prefix: str, fd_id: int, answer_idx):
+    # percorre chaves do índice para esse participante
+    for (pid, inj), row in answer_idx.items():
+        if pid == fd_id and inj.startswith(inject_prefix):
+            return row.get("answer_text")
+    return None
+
+def count_answers_for_step(sim_id: str, step: str, answer_rows, key_decisions):
+    """
+    answer_rows: st.session_state.answers_cache (já filtrado por sim_id)
+    """
+    total = 0
+    for a in answer_rows:
+        if a["id_simulation"] != sim_id:
+            continue
+        if a["inject"] != step:
+            continue
+        # lógica inject vs decision:
+        if step.startswith("Inject"):
+            if a["answer_text"] == "DONE":
+                total += 1
+        else:
+            if a["answer_text"] != "SKIP":
+                total += 1
+    # Needed para comparar depois externamente
+    needed = 1 if any(step.startswith(k) for k in key_decisions) else 8
+    return total, needed
+
+
 inject_prompt_map = {}
 try:
     all_blocks = [
@@ -91,6 +201,9 @@ def page_login():
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Log In"):
+            if not email or not password:
+                st.error("Please enter email and password.")
+                return
             try:
                 signin = auth.sign_in_with_password({
                     "email": email,
@@ -104,7 +217,7 @@ def page_login():
                     res = (
                         supabase
                         .from_("profiles")
-                        .select("*")
+                        .select("id, username, role, profile_type_code")
                         .eq("id", signin.user.id)
                         .single()
                         .execute()
@@ -121,6 +234,10 @@ def page_login():
                         st.session_state.participant_id  = None
                         st.session_state.profile   = profile
                         st.session_state.profile_id = signin.user.id
+                        st.session_state.answers_cache      = []
+                        st.session_state.last_answer_id     = 0
+                        st.session_state.participants_cache = []
+                        st.session_state.last_snapshot_ts   = 0.0
                         nav_to("welcome")
                     else:
                         st.error("❌ No profile found for this user.")
@@ -128,6 +245,9 @@ def page_login():
     with col2:
         if st.button("Sign Up"):
             # apenas no sign-up é obrigatório preencher o código
+            if not email or not password:
+                st.error("Email and password are required.")
+                return
             if not role_code.strip():
                 st.error("❗ Você deve informar o profile type code para registar.")
             else:
@@ -187,40 +307,20 @@ def show_logos(logo_paths_with_widths):
         unsafe_allow_html=True
     )
 
-# ── single-value store for the “live” simulation ──
-SIM_FILE = "current_simulation.txt"
-ROLES_FILE = "selected_roles.json"
-FRESH_FLAG = "fresh_start"
-
-def load_selected_roles() -> list[str]:
-    if os.path.exists(ROLES_FILE):
-        return json.load(open(ROLES_FILE))
-    return []
-
-def save_selected_role(role: str):
-    roles = load_selected_roles()
-    if role not in roles:
-        roles.append(role)
-        json.dump(roles, open(ROLES_FILE, "w"))
+def load_selected_roles():
+    return sorted({p["participant_role"] for p in st.session_state.get("participants_cache", [])})
 
 def save_current(name: str):
-    with open(SIM_FILE, "w") as f:
-        f.write(name)
+    st.session_state.simulation_name = name
 
-def load_current() -> str:
-    if os.path.exists(SIM_FILE):
-        return open(SIM_FILE).read().strip()
-    return ""
+def load_current():
+    return st.session_state.get("simulation_name", "")
 
 def nav_to(page_name: str):
     """Helper: set the app’s current page in session_state and rerun."""
     st.session_state.page = page_name
     st.rerun()
 
-
-#
-# ——— Page implementations ——————————————————————————————————————————————————————————
-#
 
 #------------------------------------------------------ Page 2 - Welcome to CHIRON System ----------------------------------------------
 def page_welcome():
@@ -229,12 +329,13 @@ def page_welcome():
       - participant / supervisor / manager all see New, Running & Past simulations
       - administrator gets an extra Control Center button
     """
-    # clear any on-disk state on first visit in this session
-    if FRESH_FLAG not in st.session_state:
-        for f in (SIM_FILE, ROLES_FILE):
-            if os.path.exists(f):
-                os.remove(f)
-        st.session_state[FRESH_FLAG] = True
+
+    if "post_login_init" not in st.session_state:
+        st.session_state.answers_cache      = []
+        st.session_state.last_answer_id     = 0
+        st.session_state.participants_cache = []
+        st.session_state.last_snapshot_ts   = 0.0
+        st.session_state.post_login_init    = True
 
     # render your logos
     show_logos([
@@ -288,19 +389,16 @@ def page_create_new_simulation():
     
 
     # ─── 1) Fetch all currently pending simulations ─────────────────────────────────
-    try:
-        resp = (
-            supabase
-            .from_("simulation")
-            .select("id, name, roles_logged, created_at")
-            .eq("status", "pending")
-            .order("created_at", desc=True)
-            .execute()
-        )
-        pending = resp.data or []
-    except Exception as e:
-        st.error(f"❌ Could not load pending simulations: {e}")
-        return
+    @st.cache_data(ttl=3)
+    def load_pending():
+        resp = (supabase
+                .from_("simulation")
+                .select("id,name,roles_logged,created_at")
+                .eq("status", "pending")
+                .order("created_at", desc=True)
+                .execute())
+        return resp.data or []
+    pending = load_pending()
 
     left, right = st.columns(2)
 
@@ -318,6 +416,10 @@ def page_create_new_simulation():
                 sim = opts[choice]
                 st.session_state.simulation_id   = sim["id"]
                 st.session_state.simulation_name = sim["name"]
+                st.session_state.answers_cache      = []
+                st.session_state.last_answer_id     = 0
+                st.session_state.participants_cache = []
+                st.session_state.last_snapshot_ts   = 0.0
                 nav_to("roles_claimed_supervisor")
         else:
             st.write("_No simulations pending right now_")
@@ -330,12 +432,13 @@ def page_create_new_simulation():
             if not new_name.strip():
                 st.error("Please enter a name for your simulation.")
             else:
+                sim_name = new_name.strip()
                 try:
                     ins = (
                         supabase
                         .from_("simulation")
                         .insert({
-                            "name":         new_name,
+                            "name":         sim_name,
                             "roles_logged": [],          # no roles yet
                             "status":       "pending"
                         })
@@ -349,6 +452,16 @@ def page_create_new_simulation():
                 st.success(f"✅ Created '{new_name}' (id={created['id']})")
                 st.session_state.simulation_id   = created["id"]
                 st.session_state.simulation_name = new_name
+                st.success(f"✅ Created '{sim_name}' (id={created['id']})")
+                st.session_state.simulation_id   = created["id"]
+                st.session_state.simulation_name = sim_name
+                # reset caches for fresh sim context
+                st.session_state.answers_cache      = []
+                st.session_state.last_answer_id     = 0
+                st.session_state.participants_cache = []
+                st.session_state.last_snapshot_ts   = 0.0
+                # Invalidar cache de pending para que desapareça imediatamente
+                load_pending.clear()
                 nav_to("roles_claimed_supervisor")
 
 def roles_claimed_supervisor():
@@ -358,44 +471,71 @@ def roles_claimed_supervisor():
         return
 
     sim_id = st.session_state.get("simulation_id")
+    sim_id = st.session_state.get("simulation_id")
+    if not sim_id:
+        st.error("No simulation selected.")
+        return
     
 
     # now sim_id is set; fetch the roles_logged
-    try:
-        sim_res = (
-            supabase
-            .from_("simulation")
-            .select("roles_logged,name")
-            .eq("id", sim_id)
-            .single()
-            .execute()
-        )
-        name = sim_res.data["name"]
-    except Exception as e:
-        st.error(f"❌ Could not load simulation roles: {e}")
+    @st.cache_data(ttl=3)
+    def load_sim_roles(sim_id: str):
+        resp = (supabase
+                .from_("simulation")
+                .select("status, roles_logged, name, started_at")
+                .eq("id", sim_id)
+                .single()
+                .execute())
+        return resp.data
+
+    sim_row = load_sim_roles(sim_id)
+    if not sim_row:
+        st.error("❌ Could not load simulation (empty response).")
         return
+    name         = sim_row.get("name","")
+    roles_logged = sim_row.get("roles_logged") or []
+    status       = sim_row.get("status")
     
     st.subheader(f"New Simulation: **{name}**")
 
-    roles_logged = sim_res.data.get("roles_logged") or []
+    #roles_logged = sim_res.data.get("roles_logged") or []
 
     st.subheader("Roles Claimed")
     if not roles_logged:
         st.write("_None yet_")
     else:
-        for r in roles_logged:
-            st.write(f"- {r}")
+        missing = [r for r in ("FD","CMO","IV1","IV2","FS","EV1","EV2","CAPCOM")
+                   if r not in roles_logged]
+        st.markdown("**Current:** " + ", ".join(roles_logged))
+        if missing:
+            st.markdown("**Missing:** " + ", ".join(missing))
+        st.progress(len(roles_logged)/8)
     
     if st.button("🔄 Refresh"):
+        load_sim_roles.clear()
         st.rerun()
     
-    if len(roles_logged) == 8 and st.button("▶️ Start Simulation"):
-        supabase.from_("simulation") \
-            .update({"status": "running", "started_at": "now()"}) \
-            .eq("id", sim_id) \
-            .execute()
-        st.session_state.dm_stage = 0
-        st.session_state.dm_finished = False
+    can_start = (len(roles_logged) == 8 and status == "pending")
+    if st.button("▶️ Start Simulation", disabled=not can_start):
+        # Use a proper timestamp; let backend set started_at via RPC or now in Python:
+        from datetime import datetime, timezone
+        started_at = datetime.now(timezone.utc).isoformat()
+        try:
+            supabase.from_("simulation") \
+                .update({"status": "running", "started_at": started_at}) \
+                .eq("id", sim_id) \
+                .execute()
+        except Exception as e:
+            st.error(f"❌ Failed to start simulation: {e}")
+            return
+        # Reset live caches for new phase
+        st.session_state.answers_cache      = []
+        st.session_state.last_answer_id     = 0
+        st.session_state.participants_cache = []
+        st.session_state.last_snapshot_ts   = 0.0
+        st.session_state.dm_stage     = 0
+        st.session_state.dm_finished  = False
+        load_sim_roles.clear()
         nav_to("menu_iniciar_simulação_supervisor")
 
     if st.button("Go back to the Main Menu"):
@@ -404,24 +544,39 @@ def roles_claimed_supervisor():
 def page_supervisor_menu():
 
     sim_id = st.session_state.get("simulation_id")
-    try:
-        sim_res = (
-            supabase
-            .from_("simulation")
-            .select("roles_logged")
-            .eq("id", sim_id)
-            .single()
-            .execute()
-        )
-    except Exception as e:
-        st.error(f"❌ Could not load simulation roles: {e}")
-        return
-    
-    role = st.session_state.user_role
-    roles_logged = sim_res.data.get("roles_logged") or []
+    role   = st.session_state.get("user_role")
+
     if role not in ("supervisor", "administrator"):
-        st.warning("🔒 Please wait for the Supervisor to create a simulation first.")
+        st.warning("🔒 Only supervisors / administrators have access to this menu.")
         return
+    if not sim_id:
+        st.error("No simulation selected. Create or resume one first.")
+        return
+
+    @st.cache_data(ttl=3)
+    def load_sim(sim_id: str):
+        resp = (supabase
+                .from_("simulation")
+                .select("status, roles_logged, name, started_at")
+                .eq("id", sim_id)
+                .single()
+                .execute())
+        return resp.data
+
+    sim_row = load_sim(sim_id)
+    if not sim_row:
+        st.error("❌ Simulation not found.")
+        return
+
+    roles_logged = sim_row.get("roles_logged") or []
+    status       = sim_row.get("status")
+
+    # Optional small status header
+    st.markdown(f"**Simulation:** `{sim_row.get('name','')}` | "
+                f"Roles: {len(roles_logged)}/8 | Status: `{status}`")
+    if st.button("🔄 Refresh"):
+        load_sim.clear()
+        st.rerun()
     
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -433,11 +588,11 @@ def page_supervisor_menu():
             nav_to("dashboard")
 
     with c3:
-        if st.button("▶️ Go to Team Assessment Form", disabled=len(roles_logged) != 8):
+        can_team = (len(roles_logged) == 8 and status == "running")
+        if st.button("▶️ Go to Team Assessment Form",
+                     disabled=not can_team,
+                     help="Enabled when all 8 roles are claimed and simulation is running."):
             nav_to("teamwork_survey")
-    
-
-
 
 # --------------------------------------------------------- Page 3 Participant----------------------------------------------------
 
@@ -450,165 +605,220 @@ def participant_new_simulation():
     if st.button("Go back to the Main Menu"):
             nav_to("welcome")
 
-    if st.button("🔄 Refresh"):
-        st.rerun()
+    st_autorefresh(interval=5000, key="pending_autorefresh")
+    MINUTES_WINDOW = 30
+    MAX_ROLES = 8
 
-    five_min_ago = (datetime.utcnow() - timedelta(minutes=30)).isoformat() + "Z"
-    res = (
-        supabase
-        .from_("simulation")
-        .select("id, name, roles_logged, created_at, status")
-        .eq("status", "pending")
-        .gte("created_at", five_min_ago)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    )
+    @st.cache_data(ttl=5)
+    def _load_recent_pending(window_minutes: int):
+        cutoff_iso = (datetime.utcnow() - timedelta(minutes=window_minutes)).isoformat() + "Z"
+        try:
+            resp = (supabase
+                    .from_("simulation")
+                    .select("id,name,roles_logged,created_at,status")
+                    .eq("status", "pending")
+                    .gte("created_at", cutoff_iso)
+                    .order("created_at", desc=True)
+                    .limit(1)
+                    .execute())
+            return resp.data or []
+        except Exception as e:
+            st.error(f"❌ Could not look up new simulations: {e}")
+            return []
+
+    sims = _load_recent_pending(MINUTES_WINDOW)
 
     # supabase-py no longer has res.error; use try/except
     try:
-        sims = res.data or []
+        if not isinstance(sims, list):
+            raise TypeError("Unexpected response type for simulations list.")
     except Exception as e:
-        st.error(f"❌ Could not look up new simulations: {e}")
+        st.error(f"❌ Internal processing error: {e}")
         return
 
     if not sims:
-        st.info("No *very recent* pending simulations—please wait for a supervisor.")
+        st.info(f"No pending simulations created in the last {MINUTES_WINDOW} minutes—please wait for a supervisor.")
         return
 
     sim = sims[0]
-    if len(sim["roles_logged"]) >= 8:
-        st.info("The most recent pending simulation is already full—please wait for a new one.")
+    claimed = len(sim.get("roles_logged") or [])
+    if claimed >= MAX_ROLES:
+        st.info("The newest pending simulation is already full — please wait for a new one.")
         return
 
     st.subheader("Join the newest pending simulation:")
-    st.write(f"**{sim['name']}**  (created at {sim['created_at']})")
-    if st.button("Join this Simulation"):
-        st.session_state.simulation_id   = sim["id"]
-        st.session_state.simulation_name = sim["name"]
+    created_at = sim.get("created_at", "")
+    st.write(f"**{sim['name']}**  \nCreated at: `{created_at}`  \nRoles claimed: **{claimed}/{MAX_ROLES}**")
+
+    # Prevent accidental rejoin if already in another simulation
+    already_in = st.session_state.get("simulation_id") and st.session_state.simulation_id != sim["id"]
+    disabled_join = already_in
+    help_text = "You are already in another simulation. Leave it first." if already_in else None
+
+    if st.button("Join this Simulation", disabled=disabled_join, help=help_text):
+        # reset delta caches to avoid leaking old answers context
+        st.session_state.answers_cache      = []
+        st.session_state.last_answer_id     = 0
+        st.session_state.participants_cache = []
+        st.session_state.last_snapshot_ts   = 0.0
+        st.session_state.simulation_id      = sim["id"]
+        st.session_state.simulation_name    = sim["name"]
         nav_to("dm_role_claim")
 
+MAX_ROLES = 8
+ALL_ROLES = list(questionnaire1.roles.keys())
+
+@st.cache_data(ttl=3)
+def _load_sim_and_participants(sim_id: str):
+    """Light cached fetch of simulation name, roles_logged and current participants."""
+    sim_row = (supabase
+               .from_("simulation")
+               .select("id,name,status,roles_logged")
+               .eq("id", sim_id)
+               .single()
+               .execute()
+               .data)
+    parts = (supabase
+             .from_("participant")
+             .select("id,participant_role,id_profile")
+             .eq("id_simulation", sim_id)
+             .execute()
+             .data or [])
+    return sim_row, parts
 
 
 def page_dm_role_claim(key_prefix: str = ""):
     st.header("Claim Your Role")
 
     # 1) Poll while we’re still waiting to join
-    if (st.session_state.get("simulation_id") is None
-        or st.session_state.get("participant_id") is None):
-        st_autorefresh(interval=5_000, key=f"{key_prefix}-dm_wait")
-
     sim_id = st.session_state.get("simulation_id")
-    if sim_id is None:
-        st.warning("🔒 Waiting for the Supervisor to create a simulation…")
+    if not sim_id:
+        st.warning("🔒 No simulation selected yet — waiting for supervisor.")
+        st_autorefresh(interval=5000, key=f"{key_prefix}-wait")
         return
 
-    # 2) Load simulation name + all participants
+    st_autorefresh(interval=5000, key=f"{key_prefix}-poll")
+
     try:
-        sim = supabase.from_("simulation") \
-                      .select("name") \
-                      .eq("id", sim_id) \
-                      .single() \
-                      .execute().data
-        parts = supabase.from_("participant") \
-                        .select("id, participant_role, id_profile") \
-                        .eq("id_simulation", sim_id) \
-                        .execute().data or []
+        sim_row, parts = _load_sim_and_participants(sim_id)
+        if not sim_row:
+            st.error("❌ Simulation not found.")
+            return
     except Exception as e:
         st.error(f"❌ Could not load simulation or participants: {e}")
         return
 
-    name = sim["name"]
+    name = sim_row.get("name","")
+    roles_logged = sim_row.get("roles_logged") or []
+    taken_set = set(roles_logged)
+    claimed_count = len(roles_logged)
+
     st.subheader(f"Simulation: **{name}**")
     if st.button("Go back to the Main Menu", key=f"{key_prefix}-back"):
             nav_to("welcome")
 
     # 3) Show roles already taken
-    roles_taken = [p["participant_role"] for p in parts]
-    st.subheader("Roles Already Taken")
-
-    if st.button("🔄 Refresh", key=f"{key_prefix}-refresh"):
-        st.rerun()
-        
-    if roles_taken:
-        for r in roles_taken:
-            st.write(f"- **{r}**")
+    st.subheader("Roles Status")
+    st.write(f"Roles claimed: **{claimed_count}/8**")
+    if roles_logged:
+        missing = [r for r in ALL_ROLES if r not in taken_set]
+        st.markdown("**Claimed:** " + ", ".join(roles_logged))
+        if missing:
+            st.markdown("**Available:** " + ", ".join(missing))
     else:
-        st.write("_None yet_")
+        st.info("No roles claimed yet.")
+    if st.button("🔄 Refresh", key=f"{key_prefix}-refresh"):
+        _load_sim_and_participants.clear()
+        st.rerun()
 
     # 4) Have I already claimed one?
-    me = st.session_state.user.id
-    me_row = next((p for p in parts if p["id_profile"] == me), None)
+    user_id = st.session_state.user.id
+    me_row = next((p for p in parts if p["id_profile"] == user_id), None)
     if me_row:
-        st.success(f"✅ You are already **{me_row['participant_role']}** in this simulation.")
+        st.success(f"✅ You are **{me_row['participant_role']}**.")
         st.session_state.participant_id = me_row["id"]
-        # only enable “Start” once all 8 are in
-        if len(roles_taken) == 8 and st.button("▶️ Start Simulation", key=f"{key_prefix}-start"):
-            st.session_state.dm_stage = 0
-            st.session_state.dm_finished = False
+        st.session_state.dm_role = me_row["participant_role"]
+        if claimed_count == MAX_ROLES and st.button("▶️ Start Simulation", key=f"{key_prefix}-start"):
+            st.session_state.answers_cache = []
+            st.session_state.last_answer_id = 0
+            st.session_state.participants_cache = []
+            st.session_state.last_snapshot_ts = 0.0
             nav_to("dm_questionnaire")
         else:
-            st.info(f"Waiting for all roles ({len(roles_taken)}/8 claimed)…")
+            st.info(f"Waiting for all roles… ({claimed_count}/{MAX_ROLES})")
         return
 
     # 5) Otherwise show the “pick a role” form
     st.markdown("---")
     st.subheader("Select Your Role")
-    all_roles = list(questionnaire1.roles.keys())
-    available = [r for r in all_roles if r not in roles_taken]
+    available = [r for r in ALL_ROLES if r not in taken_set]
     choice = st.selectbox("Choose your role", options=available, key=f"{key_prefix}-role_choice")
 
     # 6) Show its description immediately
     st.write(questionnaire1.roles.get(choice, "_No description available._"))
 
     if st.button("Submit Role", key=f"{key_prefix}-submit_role"):
-        # a) Insert this participant row
-        try:
-            ins = supabase.from_("participant") \
-                          .insert({
-                              "id_simulation":    sim_id,
-                              "participant_role": choice,
-                              "id_profile":       me
-                          }) \
-                          .execute()
-            pid = ins.data[0]["id"]
-            st.session_state.participant_id = pid
-            st.session_state.dm_role = choice 
-        except Exception as e:
-            st.error(f"❌ Could not register you as a participant: {e}")
+        _load_sim_and_participants.clear()
+        latest_sim, latest_parts = _load_sim_and_participants(sim_id)
+        latest_roles = set(latest_sim.get("roles_logged") or [])
+        if choice in latest_roles:
+            st.warning(f"Role **{choice}** was just taken. Pick another.")
+            st.rerun()
             return
-
-        # b) Append locally and update the simulation
-        new_roles = roles_taken + [choice]
         try:
-            up = supabase.from_("simulation") \
-                         .update({"roles_logged": new_roles}) \
-                         .eq("id", sim_id) \
-                         .execute()
+            ins = (supabase
+                   .from_("participant")
+                   .insert({
+                       "id_simulation": sim_id,
+                       "participant_role": choice,
+                       "id_profile": user_id
+                   })
+                   .execute())
+            new_pid = ins.data[0]["id"]
+            st.session_state.participant_id = new_pid
+            st.session_state.dm_role = choice
+        except Exception as e:
+            st.error(f"❌ Could not register you as participant: {e}")
+            return
+        try:
+            new_roles = list(latest_roles) + [choice]
+            up = (supabase
+                  .from_("simulation")
+                  .update({"roles_logged": new_roles})
+                  .eq("id", sim_id)
+                  .execute())
             if not up.data:
-                raise RuntimeError("no data returned")
+                raise RuntimeError("Empty update response.")
         except Exception as e:
             st.error(f"❌ Could not update simulation roles: {e}")
             return
-
-        st.success(f"✅ You claimed **{choice}**!")
-        st.rerun()  # now we hit the “already claimed” branch next
+        st.success(f"✅ Role **{choice}** claimed!")
+        _load_sim_and_participants.clear()
+        st.rerun()
 
     # 7) Fallback “waiting” UI if they somehow fall through
-    if len(roles_taken) == 8:
+    if len(claimed_count) == 8:
         st.markdown("---")
         if st.button("▶️ Start Simulation", key=f"{key_prefix}-fallback_start"):
             st.session_state.dm_stage = 0
             st.session_state.dm_finished = False
             nav_to("dm_questionnaire")
     else:
-        st.info(f"Waiting for all roles ({len(roles_taken)}/8 claimed)…")
+        st.info(f"Waiting for all roles ({len(claimed_count)}/8 claimed)…")
 
 # ------------------------------------------------------- Page 4 Participant ----------------------------------------------------------
 
 def page_dm_questionnaire(key_prefix: str = ""):
-    sim_id  = st.session_state.simulation_id   # BIGINT PK of simulation
-    part_id = st.session_state.participant_id  # BIGINT PK of this participant
+    sim_id  = st.session_state.get("simulation_id")
+    part_id = st.session_state.get("participant_id")
+    role    = st.session_state.get("dm_role")
+    if not sim_id or not part_id or not role:
+        st.error("Missing simulation / participant context.")
+        if st.button("⬅️ Back to Main Menu"):
+            nav_to("welcome")
+        return
+    sync_simulation_state(sim_id)
+    answer_idx = build_answer_index()
 
     col1, col2, col3 = st.columns([3, 3, 1])
 
@@ -628,40 +838,39 @@ def page_dm_questionnaire(key_prefix: str = ""):
     if st.session_state.dm_stage == 0 and not st.session_state.get("dm_started_marker", False):
         # 1a) Update simulation
         try:
-            supabase.from_("simulation") \
-                .update({"status":"running", "started_at": "now()"}) \
-                .eq("id", sim_id) \
-                .execute()
+            now_iso = datetime.utcnow().isoformat() + "Z"
+            supabase.from_("simulation").update(
+                {"status": "running", "started_at": now_iso}
+            ).eq("id", sim_id).execute()
+            supabase.from_("participant").update(
+                {"started_at": now_iso}
+            ).eq("id", part_id).execute()
         except Exception as e:
-            st.error(f"❌ Couldn’t mark simulation as running: {e}")
-            return
-
-        # 1b) Update this participant
-        try:
-            supabase.from_("participant") \
-                .update({"started_at": "now()"}) \
-                .eq("id", part_id) \
-                .execute()
-        except Exception as e:
-            st.error(f"❌ Couldn’t mark participant as started: {e}")
-            return
+            st.warning(f"⚠️ Could not mark start (continuing): {e}")
 
         st.session_state.dm_started_marker = True
 
     # —————————————————————
     # 2) Run the questionnaire engine
-    # —————————————————————
-
-    # ────────── Resume logic ─────────
+  
     stage = st.session_state.dm_stage
     # only default to 1 on actual decision stages, not injects
     if stage not in (1, 3, 5, 7) \
     and not isinstance(st.session_state.get("current_decision_index"), int):
         st.session_state.current_decision_index = 1
 
+    def _cache_append_answer(row):
+        st.session_state.answers_cache.append(row)
+        st.session_state.last_answer_id = max(
+            st.session_state.last_answer_id,
+            row.get("id", st.session_state.last_answer_id)
+        )
+
     questionnaire1.run(
-        supabase, simulation_name=st.session_state.simulation_name,
-        role=st.session_state.dm_role
+        supabase,
+        simulation_name=st.session_state.simulation_name,
+        role=role,
+        on_new_answer=_cache_append_answer  # ignored if not implemented
     )
 
     st.session_state.roles = [
@@ -669,22 +878,17 @@ def page_dm_questionnaire(key_prefix: str = ""):
       "FD", "FS", "BME", "CAPCOM",
     ]
 
-    if st.session_state.dm_stage == 13 and st.button("Submit and Continue", key=f"{key_prefix}-submit_continue"):
+    if st.session_state.get("dm_stage") == 13 and st.button("✅ Submit and Continue", key=f"{key_prefix}-submit_continue"):
         # 1) mark this participant finished
-        now = datetime.utcnow().isoformat()
-        res = (
-            supabase
-            .from_("participant")
-            .update({"finished_at": now})
-            .eq("id", part_id)
-            .execute()
-        )
-        if res.error:
-            st.error(f"❌ Supabase update failed: {res.error.message}")
-        elif not res.data:
-            st.warning("⚠️ No rows were updated. Check that `part_id` is correct.")
-        else:
-            st.success("✅ finish time recorded!")
+        try:
+            finish_iso = datetime.utcnow().isoformat() + "Z"
+            supabase.from_("participant").update(
+                {"finished_at": finish_iso}
+            ).eq("id", part_id).execute()
+            st.success("✅ Finish time recorded!")
+        except Exception as e:
+            st.error(f"❌ Could not mark finished: {e}")
+            return
 
         # 4) onward to individual results
         nav_to("individual_results")
@@ -702,25 +906,75 @@ from questionnaire1 import (
     decisions35to43,
 )
 
+def normalize_inject(label: str) -> str:
+    import re
+    if not label:
+        return ""
+    m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", label.strip())
+    return m.group(1) if m else label.strip()
+
+def build_participant_role_map():
+    return {p["id"]: p["participant_role"] for p in st.session_state.participants_cache}
+
+def build_answers_by_part(sim_id: int):
+    """Return dict participant_id -> list[answer_row] filtered to this simulation."""
+    out = {}
+    for a in st.session_state.answers_cache:
+        if a["id_simulation"] != sim_id:
+            continue
+        out.setdefault(a["id_participant"], []).append(a)
+    return out
+
+
+
 def render_participant_live(pid: int, sim_id: int):
-    # Fetch role & simulation status
-    row = questionnaire1.supabase.from_("participant").select("participant_role") \
-                .eq("id", pid).single().execute().data
-    role = row["participant_role"]
+    """
+    Read‑only live progress panel for a participant, using snapshot cache only.
+    No direct queries here.
+    """
+    # ---- Guards ----
+    if "answers_cache" not in st.session_state or "participants_cache" not in st.session_state:
+        st.warning("Snapshot cache not initialized yet.")
+        return
+
+    # Participant role lookup
+    role_map = build_participant_role_map()
+    role = role_map.get(pid, "—")
     st.markdown(f"#### {role} — Participant #{pid}")
 
-    status = questionnaire1.supabase.from_("simulation").select("status") \
-                .eq("id", sim_id).single().execute().data["status"]
-    if status != "running":
+    # (Optional) simulation status kept outside; if you still need it,
+    # ensure you cached `status` when you fetched the simulation.
+    sim_status = st.session_state.get("simulation_status", "running")
+    if sim_status != "running":
         st.write("⏳ Waiting for simulation to start…")
         return
 
-    # Resolve blocks based on prior special decisions
-    ans7  = st.session_state.answers.get("Decision 7")
-    ans13 = st.session_state.answers.get("Decision 13")
-    ans23 = st.session_state.answers.get("Decision 23")
-    ans34 = st.session_state.answers.get("Decision 34")
+    # Gather all answers for this simulation
+    answers_by_part = build_answers_by_part(sim_id)
+    my_answers = answers_by_part.get(pid, [])
+    # Build quick lookups
+    my_answer_map = {normalize_inject(a["inject"]): a for a in my_answers}
 
+    # FD Key decisions from FD participant (found once)
+    fd_id = None
+    for p in st.session_state.participants_cache:
+        if p["participant_role"] == "FD":
+            fd_id = p["id"]
+            break
+
+    fd_answers = {}
+    if fd_id:
+        for a in answers_by_part.get(fd_id, []):
+            pref = normalize_inject(a["inject"])
+            if pref in {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}:
+                fd_answers[pref] = a.get("answer_text")
+
+    ans7  = fd_answers.get("Decision 7")
+    ans13 = fd_answers.get("Decision 13")
+    ans23 = fd_answers.get("Decision 23")
+    ans34 = fd_answers.get("Decision 34")
+
+    # Resolve dynamic blocks
     block1 = decisions1to13
     block2 = decisions14to23.get((ans7, ans13), [])
     block3 = decisions24to28.get((ans7, ans13), [])
@@ -728,1118 +982,1168 @@ def render_participant_live(pid: int, sim_id: int):
     block5 = decisions33to34.get((ans7, ans13, ans23), [])
     block6 = decisions35to43.get((ans7, ans13, ans23, ans34), [])
 
-    all_questions = [*block1, *block2, *block3, *block4, *block5, *block6]
+    # Canonical ordered step list (inject markers included)
+    steps = []
+    steps.append("Inject 1")
+    steps.extend(d["inject"] for d in block1)
+    steps.append("Inject 2")
+    steps.extend(d["inject"] for d in block2)
+    steps.append("Inject 3")
+    steps.extend(d["inject"] for d in block3)
+    steps.append("Inject 4")
+    steps.extend(d["inject"] for d in block4)
+    steps.extend(d["inject"] for d in block5)
+    steps.extend(d["inject"] for d in block6)
 
-    # Initialize session state on first run
-    if "all_questions" not in st.session_state:
-        st.session_state.all_questions = all_questions
-        st.session_state.current_decision_index = 1
-
-    # Select current decision
-    decision = st.session_state.all_questions[st.session_state.current_decision_index - 1]
-
-    # -- Inline display logic replacing separate display_decision() --
-    inject = decision.get("inject", "")
-    # Determine text and options, including role-specific overrides
-    text = decision.get("text", "")
-    options = decision.get("options", [])
-    role_specific = decision.get("role_specific", {})
-    if role in role_specific:
-        rs = role_specific[role]
-        text = rs.get("text", text)
-        options = rs.get("options", options)
-
-    # Render prompt
-    st.subheader(f"{inject}  {text}")
-
-    # Special handling for key FD decisions
-    key_decisions = ("Decision 7", "Decision 13", "Decision 23", "Decision 34")
-    if inject in key_decisions:
-        # Flight Director gets input; others wait
-        if role == "FD":
-            answer = st.radio("Your choice:", options, key=f"dec_{inject}")
-            if st.button("Submit ➡", key=f"submit_{inject}"):
-                # (record answer logic here)
-                st.session_state.answers[inject] = answer
-                st.session_state.current_decision_index += 1
-                st.rerun()
+    # Count logic using cache only
+    # Precompute per-step counts (all participants)
+    # We need answer rows of all participants in sim:
+    sim_answers = [a for a in st.session_state.answers_cache if a["id_simulation"] == sim_id]
+    step_counts = {}
+    for a in sim_answers:
+        pref = normalize_inject(a["inject"])
+        # Determine “countable”
+        if pref.startswith("Inject"):
+            if a.get("answer_text") == "DONE":
+                step_counts[pref] = step_counts.get(pref, 0) + 1
         else:
-            st.info("⏳ Waiting for Flight Director’s decision…")
-        return
+            # decision counts any answer not SKIP
+            if a.get("answer_text") and a["answer_text"] != "SKIP":
+                step_counts[pref] = step_counts.get(pref, 0) + 1
 
-    # Standard decision rendering
-    if options:
-        choice_key = f"dec_{inject}"
-        answer = st.radio("Select an option:", ["--"] + options, key=choice_key)
-        if answer != "--" and st.button("Submit ➡", key=f"submit_{inject}"):
-            # (record answer logic here)
-            st.session_state.answers[inject] = answer
-            st.session_state.current_decision_index += 1
-            st.rerun()
-    else:
-        # Inject or informational step
-        idx = st.session_state.current_decision_index
-        button_key = f"next_{pid}_{idx}"
-        if st.button("Next ➡", key=button_key):
-            st.session_state.current_decision_index += 1
-            st.rerun()
+    key_decisions = {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}
 
-
-def render_participant_live(pid: int, sim_id: int):
-    
-    try:
-        fd_row = (
-        supabase
-            .from_("participant")
-            .select("id")
-            .eq("id_simulation", sim_id)
-            .eq("participant_role", "FD")
-            .execute()
-        )
-        fd_rows = fd_row.data or []
-        fd_id = fd_rows[0]["id"] if fd_rows else None
-    except Exception as e:
-        st.warning(f"⚠️ Could not find Flight Director in simulation: {e}")
-        return
-
-    # —————————————————————————————————————
-    # Helper: fetch FD’s answer by prefixing inject_name
-    # —————————————————————————————————————
-    def _get_fd_answer(inject_name: str) -> str | None:
-            """
-            Returns the Flight Director's answer_text for the inject
-            whose text _starts with_ inject_name, or None if not yet answered.
-            """
-            try:
-                resp = (
-                    supabase
-                    .from_("answers")
-                    .select("answer_text")
-                    .eq("id_simulation", sim_id)
-                    .eq("id_participant", fd_id)
-                    .like("inject", f"{inject_name}%")   # prefix search
-                    .execute()
-                )
-            except Exception as e:
-                st.error(f"❌ Could not fetch FD’s answer for {inject_name}: {e}")
-                return None
-
-            rows = resp.data or []
-            if not rows:
-                # simply not answered yet
-                return None
-
-            # if for some reason there are multiple, we just pick the first
-            return rows[0]["answer_text"]
-
-    # —————————————————————————————————————
-    # 1) Grab the FD’s decisions (with fallback to None)
-    # —————————————————————————————————————
-    try:
-        ans7  = _get_fd_answer("Decision 7")
-        ans13 = _get_fd_answer("Decision 13")
-        ans23 = _get_fd_answer("Decision 23")
-        ans34 = _get_fd_answer("Decision 34")
-        # Optionally mirror into session_state for downstream code
-        st.session_state.answers["Decision 7"]  = ans7
-        st.session_state.answers["Decision 13"] = ans13
-        st.session_state.answers["Decision 23"] = ans23
-        st.session_state.answers["Decision 34"] = ans34
-    except Exception as e:
-        st.error(f"❌ Error initializing FD’s decision answers: {e}")
-        return
-
-    # 3) pick each block using .get()
-    block1 = decisions1to13            # always the same
-    block2 = decisions14to23.get((ans7, ans13), [])
-    block3 = decisions24to28.get((ans7, ans13), [])
-    block4 = decisions29to32.get((ans7, ans13), [])
-    block5 = decisions33to34.get((ans7, ans13, ans23), [])
-    block6 = decisions35to43.get((ans7, ans13, ans23, ans34), [])
-
-    all_blocks = [block1, block2, block3, block4, block5, block6]
-    all_questions = [q for block in all_blocks for q in block]
-
-    key_decisions = ("Decision 7", "Decision 13", "Decision 23", "Decision 34")
-    try:
-        row = (
-            supabase
-            .from_("participant")
-            .select("participant_role")
-            .eq("id", pid)
-            .single()
-            .execute()
-        ).data
-        role = row["participant_role"]
-    except Exception as e:
-        st.error(f"❌ Couldn’t load participant #{pid}: {e}")
-        return
-
-    st.markdown(f"#### {role} — Participant #{pid}")
-
-    # —————————————————————————————————————
-    # 2) Fetch simulation status
-    # —————————————————————————————————————
-    try:
-        sim = (
-            supabase
-            .from_("simulation")
-            .select("status")
-            .eq("id", sim_id)
-            .single()
-            .execute()
-        ).data
-        sim_status = sim["status"]
-    except Exception as e:
-        st.error(f"❌ Couldn’t load simulation #{sim_id}: {e}")
-        return
-
-    # —————————————————————————————————————
-    # 3) Load all answers by this participant
-    # —————————————————————————————————————
-    try:
-        resp = (
-            supabase
-            .from_("answers")
-            .select("inject,answer_text")
-            .eq("id_simulation", sim_id)
-            .eq("id_participant", pid)
-            .execute()
-        )
-        answered = resp.data or []
-    except Exception as e:
-        st.error(f"❌ Could not load answers for participant #{pid}: {e}")
-        return
-
-    answered_set = {r["inject"] for r in answered}
-    answered_map = {r["inject"]: r["answer_text"] for r in answered}
-
-    # —————————————————————————————————————
-    # 4) Define your full ordered workflow
-    # —————————————————————————————————————
-    all_blocks = [block1, block2, block3, block4, block5, block6]
-    all_steps = [d["inject"] for block in all_blocks for d in block]
-
-    # —————————————————————————————————————
-    # 5) Decide which step we should be showing
-    # —————————————————————————————————————
-
-    all_steps = []
-
-    #  1️⃣ Inject 1
-    all_steps.append("Inject 1")
-
-    #  2️⃣ Decisions 1–13
-    all_steps += [d["inject"] for d in block1]
-
-    #  3️⃣ Inject 2
-    all_steps.append("Inject 2")
-
-    #  4️⃣ Decisions 14–23
-    # assume block2 is List[ dict ]  where each dict has an "inject" key
-    all_steps.extend(q["inject"] for q in block2)
-
-    #  5️⃣ Inject 3
-    all_steps.append("Inject 3")
-
-    #  6️⃣ Decisions 24–28
-    # assume block2 is List[ dict ]  where each dict has an "inject" key
-    all_steps.extend(q["inject"] for q in block3)
-
-
-    #  7️⃣ Inject 4
-    all_steps.append("Inject 4")
-
-    #  8️⃣ Decisions 29–32
-    # assume block2 is List[ dict ]  where each dict has an "inject" key
-    all_steps.extend(q["inject"] for q in block4)
-
-
-    #  9️⃣ Decisions 33–34
-    # assume block2 is List[ dict ]  where each dict has an "inject" key
-    all_steps.extend(q["inject"] for q in block5)
-
-
-    # 🔟 Decisions 35–43
-    # assume block2 is List[ dict ]  where each dict has an "inject" key
-    all_steps.extend(q["inject"] for q in block6)
-
-    
-    def count_for(step):
-            q = (
-                supabase
-                .from_("answers")
-                .select("id", count="exact")
-                .eq("id_simulation", sim_id)
-                .eq("inject", step)
-            )
-            if step.startswith("Inject"):
-                q = q.eq("answer_text", "DONE")
-            else:
-                q = q.neq("answer_text", "SKIP")
-            return q.execute().count or 0
-    
-
-    try:
-        total = (
-                supabase
-                .from_("answers")
-                .select("id", count="exact")
-                .eq("id_simulation", sim_id)
-                .execute()
-        ).count or 0
-    except Exception:
-        total = 0
-    
-    if sim_status != "running":
-        st.write("⏳ Waiting for participants to start…")
-        return
-    
-    if total == 0:
-        current = "Initial Situation"
-    else:
-        current = "Finished"
-        for step in all_steps:
-            cnt = count_for(step)
-            q = (
-                supabase
-                .from_("answers")
-                .select("id", count="exact")
-                .eq("id_simulation", sim_id)
-                .eq("inject", step)
-            )
-            # for injects we only count “DONE”
-            if step.startswith("Inject"):
-                q = q.eq("answer_text", "DONE")
-            # for decisions we count anything that isn’t “SKIP”
-            else:
-                q = q.neq("answer_text", "SKIP")
-
-            needed = 1 if any(step.startswith(k) for k in key_decisions) else 8
-            if cnt < needed:
-                current = step
-                break
+    # Decide current step
+    current = "Finished"
+    for s in steps:
+        pref = normalize_inject(s)
+        needed = 1 if pref in key_decisions else 8
+        if step_counts.get(pref, 0) < needed:
+            current = pref
+            break
 
     st.markdown(f"**Current stage:** {current}")
 
-
     if current == "Initial Situation":
-        questionnaire1.show_initial_situation()
+        # If you have a special initial situation text function
+        txt = questionnaire1.initial_situation_text if hasattr(questionnaire1, "initial_situation_text") else "Initial Situation"
+        st.write(txt)
         return
-
     if current == "Finished":
-        st.success("✅ Completed all steps!")
+        st.success("✅ All steps completed.")
         return
 
-    # helper to pull text & options for any inject/decision
-    def lookup(step_id):
-        txt, opts = "_No prompt found_", []
-        for block in all_blocks:
-            for d in block:
-                if d["inject"] == step_id:
-                    # generic
+    # Lookup a step's question definition
+    def lookup(pref: str):
+        for blk in (block1, block2, block3, block4, block5, block6):
+            for d in blk:
+                if normalize_inject(d["inject"]) == pref:
+                    # Resolve role-specific override
                     txt = d.get("text", "")
                     opts = d.get("options", [])
                     rs = d.get("role_specific", {})
                     if role in rs:
                         txt = rs[role].get("text", txt)
                         opts = rs[role].get("options", opts)
-                    return txt, opts
-        return txt, opts
+                    return d["inject"], txt, opts
+        return pref, "_Prompt not found_", []
 
-    try:
-        q = supabase.from_("answers").select("id", count="exact") \
-                .eq("id_simulation", sim_id) \
-                .eq("inject", current)
-        # filter according to inject vs decision
-        if current.startswith("Inject"):
-            q = q.eq("answer_text", "DONE")
-        else:
-            q = q.neq("answer_text", "SKIP")
-        cnt = q.execute().count or 0
-    except Exception:
-        cnt = 0
-    
+    # Render logic
     if current in key_decisions:
-        # 1) Load FD’s answer (if any)
-        try:
-            fd_row = (
-                supabase
-                .from_("participant")
-                .select("id")
-                .eq("id_simulation", sim_id)
-                .eq("participant_role", "FD")
-                .single()
-                .execute()
-            ).data
-            fd_id = fd_row["id"]
-        except Exception as e:
-            st.warning("⚠️ Flight Director not yet in simulation…")
-            return
-
-        try:
-            ans = (
-                supabase
-                .from_("answers")
-                .select("answer_text")
-                .eq("id_simulation", sim_id)
-                .eq("id_participant", fd_id)
-                .eq("inject", current)
-                .single()
-                .execute()
-            ).data
-            fd_answer = ans["answer_text"] if ans else None
-        except Exception:
-            fd_answer = None
-
-        # 2a) FD’s own panel → they get the normal question + submit status
+        inject_label, prompt, opts = lookup(current)
+        st.markdown(f"### {inject_label}")
         if role == "FD":
-            prompt, options = lookup(current)
-            st.markdown(f"### {current}")
-            st.write(prompt)
-            for o in options:
-                st.write(f"- {o}")
-
-            if fd_answer is None:
-                st.info("⏳ You (FD) have not yet submitted this decision.")
-            else:
-                st.markdown(f"**Your answer:** {fd_answer}")
-                st.info("Waiting for the rest of the simulation to proceed…")
-        # 2b) Everyone else → read-only “Waiting for FD”
+            st.info("FD decision panel (read-only here). Use questionnaire view to answer.")
+        fd_ans = fd_answers.get(current)
+        if fd_ans:
+            st.success(f"FD answered: **{fd_ans}**")
         else:
-            st.markdown(f"### {current}")
-            st.write("⏳ Waiting for Flight Director’s decision…")
-            if fd_answer:
-                st.success(f"FD chose: **{fd_answer}**")
+            st.warning("FD has not answered yet.")
         return
-    
-    prompt, options = lookup(current)
 
     if current.startswith("Inject"):
-        # — Inject UI (read-only) —
-        prompt1 = get_inject_text(current)
-        st.write(prompt1)
-        if answered_map.get(current) == "DONE":
-            st.info(f"Waiting for all roles to advance past {current}… ({cnt}/8)")
+        st.markdown(f"### {current}")
+        my_row = my_answer_map.get(current)
+        my_done = (my_row and my_row.get("answer_text") == "DONE")
+        cnt = step_counts.get(current, 0)
+        if my_done:
+            st.info(f"You marked DONE. Waiting others… ({cnt}/8)")
         else:
-            st.warning(f"⏳ Participant hasn’t clicked Next on {current} yet.")
+            st.warning("You have not advanced this inject yet (use questionnaire view).")
+        return
 
-    else:
-        # — Decision UI (read-only) —
-        st.write(prompt)
-        for o in options:
+    # Regular decision
+    inject_label, prompt, opts = lookup(current)
+    st.markdown(f"### {inject_label}")
+    st.write(prompt)
+    if opts:
+        st.markdown("**Options:**")
+        for o in opts:
             st.write(f"- {o}")
-        if current in answered_map:
-            st.markdown(f"**Your answer:** {answered_map[current]}")
-            if cnt < 8:
-                st.info(f"Waiting for everyone… ({cnt}/8)")
-            else:
-                st.success("✅ All participants answered—advancing to next step.")
+
+    my_dec = my_answer_map.get(current)
+    cnt = step_counts.get(current, 0)
+    if my_dec:
+        st.success(f"Your answer: **{my_dec.get('answer_text','')}**")
+        if cnt < 8:
+            st.info(f"Waiting others… ({cnt}/8)")
         else:
-            st.info("⏳ Participant has not answered this decision yet.")
-
-    # —————————————————————————————————————
-    # 7) Once all 8 are in, rerun to advance everybody
-    # —————————————————————————————————————
-    if sim_status == "running" and cnt == 8:
-        st.rerun() 
+            st.info("All participants answered. Advancing…")
+    else:
+        st.warning("You have not answered yet (use questionnaire page).")
 
 
-
+def compute_step_counts(sim_id, answers):
+    counts = {}
+    for a in answers:
+        if a["id_simulation"] != sim_id:
+            continue
+        pref = normalize_inject(a["inject"])
+        if pref.startswith("Inject"):
+            if a["answer_text"] == "DONE":
+                counts[pref] = counts.get(pref, 0) + 1
+        else:
+            if a["answer_text"] and a["answer_text"] != "SKIP":
+                counts[pref] = counts.get(pref, 0) + 1
+    return counts
     
 
 def page_live_dashboard():
-    #from streamlit_autorefresh import st_autorefresh
     st.header("Supervisor Live Dashboard")
-    sim_id   = st.session_state.simulation_id
-    sim_name = st.session_state.simulation_name
+
+    sim_id   = st.session_state.get("simulation_id")
+    sim_name = st.session_state.get("simulation_name", "")
+
+    if not sim_id:
+        st.error("No simulation selected.")
+        if st.button("Go back to Main Menu"):
+            nav_to("welcome")
+        return
+
+    # 1) Sync snapshot FIRST (answers + participants)
+    sync_simulation_state(sim_id)          # respects ttl
+    # build_answer_index() only if you actually use it for cross lookups here
+    # answer_idx = build_answer_index()
+
+    # Optional: manual hard refresh (bust ttl)
+    col_top = st.columns([1,1,1,3])
+    with col_top[0]:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
+            return
+    with col_top[1]:
+        if st.button("⬅️ Back"):
+            nav_to("menu_iniciar_simulação_supervisor")
+            return
+    with col_top[2]:
+        if st.button("🔄 Hard Refresh", key="refresh_force"):
+            fetch_snapshot.clear()
+            sync_simulation_state(sim_id)
+            st.rerun()
+
     st.subheader(f"Simulation: {sim_name}")
 
-    if st.button("Go back to the Main Menu"):
-        nav_to("welcome")
-        return
-    
-    if st.button("Go back"):
-        nav_to("menu_iniciar_simulação_supervisor")
-        return
-    
-    if st.button("Refresh Dashboard", key="refresh"):
-        st.rerun()
+    # 2) Build roster from participants_cache (no new query)
+    participants_cache = st.session_state.get("participants_cache", [])
+    roster = {p["participant_role"]: p["id"] for p in participants_cache if p.get("participant_role")}
 
-    # 1) Fetch the static roster from 'participant'
-    #st_autorefresh(interval=5_000, key="dashboard_autorefresh")
-    try:
-        p_res = (
-            supabase
-            .from_("participant")
-            .select("participant_role,id")
-            .eq("id_simulation", sim_id)
-            .execute()
-        )
-        roster = {r["participant_role"]: r["id"] for r in (p_res.data or [])}
-    except Exception as e:
-        st.error(f"❌ Could not load roster: {e}")
-        return
-
-    expected = [
-      "FE-3 (EVA2)", "Commander (CMO, IV2)", "FE-1 (EVA1)", "FE-2 (IV1)",
-      "FD", "FS", "BME", "CAPCOM",
+    EXPECTED_ROLES = [
+        "FE-3 (EVA2)", "Commander (CMO, IV2)", "FE-1 (EVA1)", "FE-2 (IV1)",
+        "FD", "FS", "BME", "CAPCOM",
     ]
 
-    for row in [expected[:4], expected[4:]]:
+    # 3) Dashboard grid
+    st.markdown("### Roles")
+    top_row  = EXPECTED_ROLES[:4]
+    bottom_row = EXPECTED_ROLES[4:]
+
+    for row in (top_row, bottom_row):
         cols = st.columns(4, gap="small")
         for role, col in zip(row, cols):
             with col:
-                #st.subheader(role)
+                st.markdown(f"**{role}**")
                 pid = roster.get(role)
                 if not pid:
-                    st.write("_Not yet joined_")
+                    st.info("Not joined yet")
                 else:
                     render_participant_live(pid, sim_id)
 
-    if st.button("Go to Teamwork Assessment"):
+    # 4) Missing roles summary
+    missing = [r for r in EXPECTED_ROLES if r not in roster]
+    if missing:
+        st.warning("Missing roles: " + ", ".join(missing))
+    else:
+        st.success("All roles are present.")
+
+    st.markdown("---")
+    if st.button("🧪 Teamwork Assessment"):
         nav_to("page_one")
+
+def normalize_inject(label: str) -> str:
+    import re
+    if not label:
+        return ""
+    m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", label.strip())
+    return m.group(1) if m else label.strip()
+
+def build_role_specific_text(inject_label: str, role: str):
+    # Search across currently active decision blocks (will pass them in)
+    return ""  # placeholder if you integrate below logic differently
+
 
 def page_override_interface():
     st.header("Supervisor Override")
 
-    # 1) Who are we overriding for?
-    pid = st.session_state.get("override_for")
-    if not pid:
-        st.error("No participant selected for override.")
+    sim_id  = st.session_state.get("simulation_id")
+    pid     = st.session_state.get("override_for")
+    if not sim_id or not pid:
+        st.error("No simulation or participant selected for override.")
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
         return
-    sim_id = st.session_state.simulation_id
 
-    # 2) Lookup that participant’s role so we can show it
-    p_res = (
-        supabase
-        .from_("participant")
-        .select("participant_role")
-        .eq("id", pid)
-        .single()
-        .execute()
+    # 1) Ensure snapshot is fresh enough
+    sync_simulation_state(sim_id)
+
+    # 2) Participant role from cache
+    participants = st.session_state.get("participants_cache", [])
+    role_map = {p["id"]: p["participant_role"] for p in participants}
+    target_role = role_map.get(pid, "Unknown")
+    st.subheader(f"Override for: **{target_role}** (participant #{pid})")
+
+    # 3) Derive FD key decisions from cache
+    answers = [a for a in st.session_state.answers_cache if a["id_simulation"] == sim_id]
+    # Find FD id
+    fd_id = next((p["id"] for p in participants if p.get("participant_role") == "FD"), None)
+    fd_answers = {}
+    if fd_id:
+        for a in answers:
+            if a["id_participant"] == fd_id:
+                pref = normalize_inject(a["inject"])
+                if pref in {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}:
+                    fd_answers[pref] = a.get("answer_text")
+
+    ans7  = fd_answers.get("Decision 7")
+    ans13 = fd_answers.get("Decision 13")
+    ans23 = fd_answers.get("Decision 23")
+    ans34 = fd_answers.get("Decision 34")
+
+    # 4) Build active blocks (same logic used elsewhere)
+    block1 = decisions1to13
+    block2 = decisions14to23.get((ans7, ans13), [])
+    block3 = decisions24to28.get((ans7, ans13), [])
+    block4 = decisions29to32.get((ans7, ans13), [])
+    block5 = decisions33to34.get((ans7, ans13, ans23), [])
+    block6 = decisions35to43.get((ans7, ans13, ans23, ans34), [])
+
+    active_blocks = [block1, block2, block3, block4, block5, block6]
+
+    # 5) Collect override-able injects (decisions only, optionally inject markers)
+    # If you also want to override inject markers (Inject 1–4), include them manually.
+    decision_injects = []
+    for blk in active_blocks:
+        for d in blk:
+            decision_injects.append(d["inject"])
+    # optional: add inject markers
+    inject_markers = []
+    if block2: inject_markers.append("Inject 2")
+    if block3: inject_markers.append("Inject 3")
+    if block4 or block5: inject_markers.append("Inject 4")
+    # Always include first block's marker(s):
+    inject_markers.insert(0, "Inject 1")
+    # Combine if you want to override markers:
+    full_inject_list = decision_injects  # or: inject_markers + decision_injects
+
+    if not full_inject_list:
+        st.info("No active decisions available to override (path unresolved).")
+        return
+
+    choice = st.selectbox(
+        "Select decision/inject to override",
+        sorted(set(full_inject_list)),
+        key="override_inject_select"
     )
-    if p_res.error:
-        st.error(f"Couldn't load participant: {p_res.error.message}")
+
+    # 6) Show original prompt & options
+    def lookup_dec(inject_label: str):
+        for blk in active_blocks:
+            for d in blk:
+                if d["inject"] == inject_label:
+                    txt = d.get("text", "")
+                    opts = d.get("options", [])
+                    rs = d.get("role_specific", {})
+                    if target_role in rs:
+                        rsd = rs[target_role]
+                        txt = rsd.get("text", txt)
+                        opts = rsd.get("options", opts)
+                    return txt, opts
+        # If it's an inject marker
+        if inject_label.startswith("Inject"):
+            return f"{inject_label} marker", []
+        return "_Not found_", []
+
+    orig_text, orig_opts = lookup_dec(choice)
+    with st.expander("Original Prompt / Options"):
+        st.write(orig_text or "_No text_")
+        if orig_opts:
+            st.markdown("**Options:**")
+            for o in orig_opts:
+                st.write(f"- {o}")
+
+    # 7) Existing answer (if any)
+    existing = next(
+        (a for a in answers if a["id_participant"] == pid and normalize_inject(a["inject"]) ==
+         normalize_inject(choice)), None
+    )
+    if existing:
+        st.info(f"Current stored answer: **{existing.get('answer_text','')}**")
+
+    override_val = st.text_input("New answer (leave blank to delete / reset):", key="override_new_answer")
+
+    col_a, col_b, col_c = st.columns(3)
+    with col_a:
+        apply_clicked = st.button("💾 Apply Override")
+    with col_b:
+        delete_clicked = st.button("🗑️ Delete Answer")
+    with col_c:
+        cancel_clicked = st.button("✖️ Cancel")
+
+    if cancel_clicked:
+        st.session_state.pop("override_for", None)
+        nav_to("live_dashboard")
         return
-    role = p_res.data["participant_role"]
-    st.subheader(f"Override for: {role}")
 
-    # 3) Let supervisor pick _which_ inject to override.
-    #    We’ll pull the full list of injects from your question bank.
-    injects = [d["inject"] for d in questionnaire1.decisions1to13] \
-             + [i for block in questionnaire1.decisions14to23.values() for i in [d["inject"] for d in block]] \
-             + [i for block in questionnaire1.decisions24to28.values() for i in [d["inject"] for d in block]] \
-             + [i for block in questionnaire1.decisions29to32.values() for i in [d["inject"] for d in block]] \
-             + [i for block in questionnaire1.decisions33to34.values() for i in [d["inject"] for d in block]] \
-             + [i for block in questionnaire1.decisions35to43.values() for i in [d["inject"] for d in block]]
-    inject = st.selectbox("Select Inject to override", sorted(set(injects)))
-
-    # 4) Enter the “new” answer
-    answer = st.text_input("Override answer")
-
-    if st.button("Submit Override"):
+    # 8) Apply override
+    if apply_clicked:
+        # Prepare row payload
+        # Reconstruct question_text (optional)
+        question_text = orig_text or ""
         payload = {
-            "id_simulation":   sim_id,
-            "id_participant":  pid,
-            "inject":          inject,
-            "question_text":   "",            # or fill from session_state.question_text_map[inject]
-            "answer_text":     answer,
-            "score":           0,             # you can recompute if you like
-            "response_time":   None
+            "id_simulation":  sim_id,
+            "id_participant": pid,
+            "inject":         choice,
+            "question_text":  question_text,
+            "answer_text":    override_val,
+            "score":          0,
+            "response_time":  None
         }
-        resp = supabase.from_("answers").upsert([payload]).execute()
-        if resp.error:
-            st.error(f"❌ Override failed: {resp.error.message}")
+        try:
+            # Use upsert on conflict (id_simulation, id_participant, inject) if constraint exists
+            resp = supabase.from_("answers").upsert([payload]).execute()
+            if not resp.data:
+                st.warning("Override applied but no data returned (check schema).")
+            else:
+                st.success(f"Override applied: {target_role} → {choice} = “{override_val}”")
+                # Update local cache immediately
+                updated_row = resp.data[0]
+                # Remove any old cached row with same triple
+                st.session_state.answers_cache = [
+                    r for r in st.session_state.answers_cache
+                    if not (r["id_simulation"] == sim_id and
+                            r["id_participant"] == pid and
+                            normalize_inject(r["inject"]) == normalize_inject(choice))
+                ]
+                st.session_state.answers_cache.append(updated_row)
+                st.session_state.last_answer_id = max(
+                    st.session_state.last_answer_id,
+                    updated_row.get("id", st.session_state.last_answer_id)
+                )
+                st.session_state.pop("override_for", None)
+                nav_to("live_dashboard")
+                return
+        except Exception as e:
+            st.error(f"❌ Override failed: {e}")
+
+    # 9) Delete answer
+    if delete_clicked:
+        if not existing:
+            st.info("No existing answer to delete.")
         else:
-            st.success(f"Override applied: {role} → {inject} = “{answer}”")
-            # clear override flag & go back
-            del st.session_state.override_for
-            nav_to("live_dashboard")
+            try:
+                supabase.from_("answers") \
+                        .delete() \
+                        .eq("id_simulation", sim_id) \
+                        .eq("id_participant", pid) \
+                        .eq("inject", existing["inject"]) \
+                        .execute()
+                st.success("Answer deleted.")
+                # Update cache
+                st.session_state.answers_cache = [
+                    r for r in st.session_state.answers_cache
+                    if not (r["id_simulation"] == sim_id and
+                            r["id_participant"] == pid and
+                            normalize_inject(r["inject"]) == normalize_inject(choice))
+                ]
+                st.session_state.pop("override_for", None)
+                nav_to("live_dashboard")
+                return
+            except Exception as e:
+                st.error(f"❌ Delete failed: {e}")
 
 
 
 # -------------------------------------------- 
+@st.cache_data(ttl=5)
+def teamwork_submitted(sim_id: int):
+    try:
+        res = (supabase
+               .from_("teamwork")
+               .select("id")
+               .eq("id_simulation", sim_id)
+               .maybe_single()
+               .execute())
+        return bool(res.data)
+    except Exception:
+        return False
+
 def page_dashboard():
-
-    sim = st.session_state.simulation_name
-    if st.button("Back"):
-        nav_to("menu_iniciar_simulação_supervisor")
-
-
-    try:
-        resp = (
-            supabase
-            .from_("answers")
-            .select("inject, answer_text")
-            .eq("simulation_name", sim)
-            .in_("participant_role", ["FD", "FS"])
-            .execute()
-        )
-        rows = resp.data
-    except Exception as e:
-        st.error(f"❌ Error fetching quiz results: {e}")
+    sim_id   = st.session_state.get("simulation_id")
+    sim_name = st.session_state.get("simulation_name", "")
+    if not sim_id:
+        st.error("No simulation selected.")
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
         return
 
-    answers = st.session_state.setdefault("answers", {})
-    for row in rows:
-        inj = row["inject"]
-        ans = row["answer_text"]
-        answers.setdefault(inj, []).append(ans)
-    # ─── 2) Recalcula os EFFECTS com base nessas answers ───
-    apply_vital_consequences(answers)
-
-    # ─── 3) Agora chama o run(), que vai ler de st.session_state["vital_effects"] ───
-    data_simulation.run(sim)
-
-    # **Interrompe aqui**, nada mais deve desenhar nesta página
-    st.markdown("---")
-    sim_id     = st.session_state.simulation_id
-    try:
-                # 1) Tenta buscar um row de teamwork para este sim_id + profile_id
-        teamwork_res = (
-            supabase
-            .from_("teamwork")
-            .select("id")
-            .eq("id_simulation", sim_id)
-            .maybe_single()
-            .execute()
-        )
-                # 2) Se a API devolveu um erro, lança para cair no except
-        if getattr(teamwork_res, "error", None):
-            raise Exception(teamwork_res.error.message)
-                # 3) Se não há dados, mostramos o warning e interrompemos
-        if not teamwork_res.data:
-            st.warning("🔒 Team Results will become available after the supervisor submits the teamwork assessment.")
+    # Navigation controls
+    top_cols = st.columns([1, 2, 2])
+    with top_cols[0]:
+        if st.button("⬅️ Back"):
+            nav_to("menu_iniciar_simulação_supervisor")
             return
+    with top_cols[1]:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
+            return
+    with top_cols[2]:
+        if st.button("🔄 Hard Refresh"):
+            fetch_snapshot.clear()
+            sync_simulation_state(sim_id)
+            st.rerun()
 
+    st.subheader(f"Decision Support Dashboard — {sim_name}")
+
+    # 1) Sync / read snapshot
+    sync_simulation_state(sim_id)
+    answers_cache = st.session_state.get("answers_cache", [])
+
+    # 2) Filter relevant answers (FD & FS only)
+    participants = st.session_state.get("participants_cache", [])
+    role_by_pid = {p["id"]: p["participant_role"] for p in participants}
+    interested_roles = {"FD", "FS"}
+    relevant_rows = [
+        a for a in answers_cache
+        if a["id_simulation"] == sim_id and
+           interested_roles.__contains__(role_by_pid.get(a["id_participant"], ""))
+    ]
+
+    if not relevant_rows:
+        st.info("No FD/FS answers yet. Waiting for first inputs…")
+    else:
+        # 3) Build inject -> list[answer_text]
+        #    (consistent with what apply_vital_consequences expects)
+        answers_for_effects = {}
+        for row in relevant_rows:
+            inject = row.get("inject")
+            text   = row.get("answer_text")
+            if inject and text is not None:
+                answers_for_effects.setdefault(inject, []).append(text)
+
+        # 4) Conditional recompute of vital consequences
+        # Cache a hash of relevant answers to avoid recomputing needlessly
+        new_sig = tuple(sorted(
+            (inj, tuple(sorted(vals)))
+            for inj, vals in answers_for_effects.items()
+        ))
+        last_sig = st.session_state.get("vitals_last_signature")
+        if new_sig != last_sig:
+            try:
+                apply_vital_consequences(answers_for_effects)
+                st.session_state.vitals_last_signature = new_sig
+            except Exception as e:
+                st.error(f"❌ Vital consequences update failed: {e}")
+        else:
+            st.caption("Vital consequences unchanged since last update.")
+
+    # 5) Render simulation vitals / outputs
+    try:
+        data_simulation.run(sim_name)  # or pass sim_id if you refactor
     except Exception as e:
-        st.error(f"Could not check teamwork submission: {e}")
+        st.error(f"❌ Error rendering simulation data: {e}")
+
+    st.markdown("---")
+
+    # 6) Teamwork gating
+    submitted = teamwork_submitted(sim_id)
+    if not submitted:
+        st.warning("🔒 Team Results will be available after the teamwork assessment is submitted.")
         return
-    
-    # sim = (
-    #     supabase
-    #     .from_("simulation")
-    #     .select("status")
-    #     .eq("id", st.session_state.simulation_id)
-    #     .maybe_single()
-    #     .execute()
-    # )
-    # if not sim.data or sim.data.get("status") != "finished":
-    #     st.info("Waiting for the simulation to be finnished.")
-    #     return
+
+    # (Optional) Check if simulation is finished (if you want gating)
+    status = st.session_state.get("simulation_status")
+    if status != "finished":
+        st.info("Simulation not marked finished yet.")
+        return
 
     if st.button("🏆 View Team Results"):
-        nav_to('certify_and_results')
+        nav_to("certify_and_results")
+
     
     return
 
 def page_one():
+    """Landing page for TEAM assessment."""
+    role = st.session_state.get("user_role")
+    if role not in ("supervisor", "administrator"):
+        st.error("Only supervisors / administrators can access the TEAM assessment.")
+        if st.button("Back to Main Menu"):
+            nav_to("welcome")
+        return
+
     st.title("Team Emergency Assessment Measure (TEAM)")
     st.write("""
-    This tool lets you, the supervisor, evaluate your team's 
-    performance during a simulation on three domains:  
-    Leadership, Teamwork, and Task Management.
+The TEAM tool allows you (the supervisor) to evaluate the crew's performance
+across three domains:
+
+**Leadership**, **Teamwork**, and **Task Management**,
+plus a global performance rating and optional comments.
     """)
-        
+
     if st.button("Start the Questionnaire"):
         nav_to("teamwork_survey")
-        
+
     if st.button("Back"):
         nav_to("menu_iniciar_simulação_supervisor")
 
-    metrics: dict[str, float] = {}
-    feedback_text: str = ""
-
-
-    
 
 def page_teamwork_survey():
-
-    if "teamwork_responses" not in st.session_state:
-        st.session_state.teamwork_responses = {}
-    if "teamwork_page" not in st.session_state:
-        st.session_state.teamwork_page = 1
-
-    sim_id     = st.session_state.simulation_id
-
-    likert_options = [
-    "Please select an option",
-    "0 – Never/Hardly ever",
-    "1 – Seldom",
-    "2 – About as often as not",
-    "3 – Often",
-    "4 – Always/Nearly always"
-    ]
-
-    def get_score(choice: str) -> int:
-        return int(choice.split('–')[0].strip())
+    role = st.session_state.get("user_role")
+    if role not in ("supervisor", "administrator"):
+        st.error("Only supervisors / administrators can fill the TEAM assessment.")
+        if st.button("Back"):
+            nav_to("welcome")
+        return
 
     sim_id   = st.session_state.get("simulation_id")
     sim_name = st.session_state.get("simulation_name")
     if not sim_id or not sim_name:
         st.error("❌ Simulation context missing — please join a simulation first.")
+        if st.button("Back"):
+            nav_to("welcome")
         return
-    st.subheader(f"TEAM Questionnaire")
 
-    st.markdown("### 🧭 Leadership")
-    st.markdown("_It is assumed that the leader is either designated, has emerged, or is the most senior — if no leader emerges allocate a ‘0’ to questions 1 & 2._")
+    st.subheader(f"TEAM Questionnaire – Simulation: **{sim_name}**")
+
+    # Prevent duplicates: see if one already exists
+    @st.cache_data(ttl=5)
+    def _load_existing_teamwork(sim_id_: int):
+        try:
+            res = (supabase
+                   .from_("teamwork")
+                   .select("id, leadership, teamwork, task_management, overall_performance, total, comments")
+                   .eq("id_simulation", sim_id_)
+                   .maybe_single()
+                   .execute())
+            return res.data
+        except Exception:
+            return None
+
+    existing = _load_existing_teamwork(sim_id)
+
+    if existing and "teamwork_edit_mode" not in st.session_state:
+        st.success("An assessment already exists for this simulation.")
+        with st.expander("View Existing Assessment", expanded=True):
+            st.write(f"**Leadership:** {existing['leadership']}")
+            st.write(f"**Teamwork:** {existing['teamwork']}")
+            st.write(f"**Task Mgmt:** {existing['task_management']}")
+            st.write(f"**Overall:** {existing['overall_performance']}")
+            st.write(f"**Total:** {existing['total']}")
+            if existing.get("comments"):
+                st.write(f"**Comments:** {existing['comments']}")
+        # If you want to allow editing, add a button:
+        if st.button("Edit Assessment"):
+            st.session_state.teamwork_edit_mode = True
+            st.rerun()
+        if st.button("Go to Results"):
+            nav_to("certify_and_results")
+        return
+
+    # ---- Form State (persist across reruns) ----
+    if "teamwork_responses" not in st.session_state:
+        st.session_state.teamwork_responses = {}
 
     resp: Dict[str, str] = st.session_state.teamwork_responses
 
-    resp['Q1'] = st.selectbox("1. The team leader let the team know what was expected of them through direction and command", likert_options, key='q1')
-    resp['Q2'] = st.selectbox("2. The team leader maintained a global perspective (e.g. monitoring clinical procedures and the environment, delegation)", likert_options, key='q2')
+    likert_options = [
+        "Please select an option",
+        "0 – Never/Hardly ever",
+        "1 – Seldom",
+        "2 – About as often as not",
+        "3 – Often",
+        "4 – Always/Nearly always"
+    ]
 
+    def get_score(choice: str) -> int:
+        """Extract numeric value from 'N – description'."""
+        return int(choice.split('–')[0].strip())
+
+    # --- Leadership ---
+    st.markdown("### 🧭 Leadership")
+    st.caption("If no leader emerges allocate ‘0’ to Q1 & Q2.")
+    resp['Q1'] = st.selectbox(
+        "1. The team leader let the team know what was expected through direction and command",
+        likert_options,
+        index=likert_options.index(resp.get('Q1', likert_options[0])) if resp.get('Q1') else 0,
+        key="TEAM_Q1"
+    )
+    resp['Q2'] = st.selectbox(
+        "2. The team leader maintained a global perspective (monitoring, delegation)",
+        likert_options,
+        index=likert_options.index(resp.get('Q2', likert_options[0])) if resp.get('Q2') else 0,
+        key="TEAM_Q2"
+    )
+
+    # --- Teamwork ---
     st.markdown("### 🤝 Teamwork")
-    st.markdown("_Ratings should include the team as a whole, i.e. the leader and the team as a collective._")
-
     teamwork_questions = {
         3: "3. The team communicated effectively",
         4: "4. The team worked together to complete tasks in a timely manner",
         5: "5. The team acted with composure and control",
-        6: "6. The team morale was positive (e.g. support, confidence, spirit)",
-        7: "7. The team adapted to changing situations (e.g. deterioration, role change)",
+        6: "6. The team morale was positive (support, confidence, spirit)",
+        7: "7. The team adapted to changing situations",
         8: "8. The team monitored and reassessed the situation",
-        9: "9. The team anticipated potential actions (e.g. drugs, defibrillator prep)"
+        9: "9. The team anticipated potential actions (e.g. equipment/drugs ready)"
     }
     for i in range(3, 10):
-        resp[f'Q{i}'] = st.selectbox(teamwork_questions[i], likert_options, key=f'q{i}')
+        resp[f'Q{i}'] = st.selectbox(
+            teamwork_questions[i],
+            likert_options,
+            index=likert_options.index(resp.get(f'Q{i}', likert_options[0])) if resp.get(f'Q{i}') else 0,
+            key=f"TEAM_Q{i}"
+        )
 
+    # --- Task Management ---
     st.markdown("### 🛠️ Task Management")
-    resp['Q10'] = st.selectbox("10. The team prioritised tasks", likert_options, key='q10')
-    resp['Q11'] = st.selectbox("11. The team followed approved standards/guidelines", likert_options, key='q11')
+    resp['Q10'] = st.selectbox(
+        "10. The team prioritised tasks",
+        likert_options,
+        index=likert_options.index(resp.get('Q10', likert_options[0])) if resp.get('Q10') else 0,
+        key="TEAM_Q10"
+    )
+    resp['Q11'] = st.selectbox(
+        "11. The team followed approved standards/guidelines",
+        likert_options,
+        index=likert_options.index(resp.get('Q11', likert_options[0])) if resp.get('Q11') else 0,
+        key="TEAM_Q11"
+    )
 
+    # --- Overall ---
     st.markdown("### 🌟 Overall Performance")
-    resp['Q12'] = st.slider("12. On a scale of 1–10, give your global rating of the team's performance", 1, 10, 5, key='q12_slider')
+    # Keep slider value persistent
+    default_overall = int(resp.get('Q12', 5)) if str(resp.get('Q12', '')).isdigit() else 5
+    overall_val = st.slider(
+        "12. Global rating of the team's performance (1–10)",
+        1, 10, default_overall, key="TEAM_Q12_SLIDER"
+    )
+    resp['Q12'] = str(overall_val)
 
-    st.text_area("📝 Comments:", key='comments', height=100)
+    comments_prev = resp.get("COMMENTS", "")
+    comments_val = st.text_area("📝 Comments (optional):", value=comments_prev, key="TEAM_COMMENTS", height=120)
+    resp["COMMENTS"] = comments_val
 
-    if st.button("✅ Submit and Continue"):
-        if any(resp.get(f'Q{i}', "") == likert_options[0] for i in range(1, 12)):
+    st.markdown("---")
+    col_submit, col_reset, col_cancel = st.columns(3)
+    with col_submit:
+        submit_clicked = st.button("✅ Submit Assessment")
+    with col_reset:
+        if st.button("↩️ Reset Form"):
+            for k in list(resp.keys()):
+                resp[k] = likert_options[0] if k.startswith("Q") and k != "Q12" else ""
+            resp["Q12"] = "5"
+            st.session_state.TEAM_Q12_SLIDER = 5
+            st.rerun()
+    with col_cancel:
+        if st.button("❌ Cancel"):
+            st.session_state.pop("teamwork_edit_mode", None)
+            nav_to("menu_iniciar_simulação_supervisor")
+            return
+
+    if submit_clicked:
+        # Validate
+        missing = [f"Q{i}" for i in range(1, 12) if resp.get(f"Q{i}", likert_options[0]) == likert_options[0]]
+        if missing:
             st.error("⚠️ Please answer all Likert questions (Q1–Q11) before submitting.")
             return
 
-            # Compute domain scores
-        leadership = get_score(resp['Q1']) + get_score(resp['Q2'])
-        teamwork   = sum(get_score(resp[f'Q{i}']) for i in range(3, 10))
-        task       = get_score(resp['Q10']) + get_score(resp['Q11'])
-        overall    = resp['Q12']  # already an int from slider
-        total      = leadership + teamwork + task + overall
-        comments = resp.get('coments','')
+        try:
+            leadership = get_score(resp['Q1']) + get_score(resp['Q2'])
+            teamwork   = sum(get_score(resp[f'Q{i}']) for i in range(3, 10))
+            task       = get_score(resp['Q10']) + get_score(resp['Q11'])
+            overall    = int(resp['Q12'])
+            total      = leadership + teamwork + task + overall
+        except Exception as e:
+            st.error(f"Scoring error: {e}")
+            return
 
         payload = {
             "id_simulation":       sim_id,
-            "simulation_name":     sim_name,   
+            "simulation_name":     sim_name,
             "leadership":          leadership,
             "teamwork":            teamwork,
             "task_management":     task,
             "overall_performance": overall,
             "total":               total,
-            "comments":            comments,
+            "comments":            resp.get("COMMENTS", "")
         }
-        try:
-            supabase.from_("teamwork").insert(payload).execute()
-            st.success("✅ Teamwork assessment saved!")
-        except Exception as e:
-            st.error(f"❌ Failed to save teamwork assessment: {e}")
 
         try:
-                # 1) Tenta buscar um row de teamwork para este sim_id + profile_id
-            teamwork_res = (
-                supabase
-                .from_("teamwork")
-                .select("id")
-                .eq("id_simulation", sim_id)
-                .maybe_single()
-                .execute()
-            )
-                # 2) Se a API devolveu um erro, lança para cair no except
-            if getattr(teamwork_res, "error", None):
-                raise Exception(teamwork_res.error.message)
-                # 3) Se não há dados, mostramos o warning e interrompemos
-            if not teamwork_res.data:
-                st.warning("Teamwork form not submitted yet.")
-                return
-
+            if existing:
+                # Update (edit mode)
+                (supabase
+                 .from_("teamwork")
+                 .update(payload)
+                 .eq("id_simulation", sim_id)
+                 .execute())
+                st.success("✅ TEAM assessment updated.")
+            else:
+                (supabase
+                 .from_("teamwork")
+                 .insert(payload)
+                 .execute())
+                st.success("✅ TEAM assessment saved.")
         except Exception as e:
-            st.error(f"Could not check teamwork submission: {e}")
+            st.error(f"❌ Failed to persist assessment: {e}")
             return
 
-        nav_to("certify_and_results")  
-        return  
+        # Clear edit mode & navigate
+        st.session_state.pop("teamwork_edit_mode", None)
+        nav_to("certify_and_results")
+
         
+@st.cache_data(ttl=5)
+def fetch_teamwork(sim_id: int):
+    try:
+        res = (supabase
+               .from_("teamwork")
+               .select("id, leadership, teamwork, task_management, overall_performance, total, comments")
+               .eq("id_simulation", sim_id)
+               .maybe_single()
+               .execute())
+        return res.data
+    except Exception:
+        return None
+
+@st.cache_data(ttl=5)
+def fetch_sim_status(sim_id: int):
+    try:
+        res = (supabase
+               .from_("simulation")
+               .select("status, certified_at")
+               .eq("id", sim_id)
+               .maybe_single()
+               .execute())
+        return res.data
+    except Exception:
+        return None
+
 
 def page_certify_and_results():
     st.header("Certification & Combined Results")
-    st.write("Make sure the simulation ran and the teamwork form is complete.")
+    st.write("Finalize the simulation and view aggregated team results.")
 
+    # --- Guards ---
     sim_id   = st.session_state.get("simulation_id")
+    sim_name = st.session_state.get("simulation_name", "")
+    role     = st.session_state.get("user_role")
 
-    # 1) Has the supervisor actually submitted the TEAM form?
-    try:
-                # 1) Tenta buscar um row de teamwork para este sim_id + profile_id
-        teamwork_res = (
-            supabase
-            .from_("teamwork")
-            .select("id")
-            .eq("id_simulation", sim_id)
-            .maybe_single()
-            .execute()
-            )
-                # 2) Se a API devolveu um erro, lança para cair no except
-        if getattr(teamwork_res, "error", None):
-            raise Exception(teamwork_res.error.message)
-                # 3) Se não há dados, mostramos o warning e interrompemos
-        if not teamwork_res.data:
-            st.warning("Teamwork form not submitted yet.")
-            return
-
-    except Exception as e:
-            st.error(f"Could not check teamwork submission: {e}")
-            return
-
-    # 2) Is the simulation already marked 'finished' in Supabase?
-    sim = (
-        supabase
-        .from_("simulation")
-        .select("status")
-        .eq("id", st.session_state.simulation_id)
-        .maybe_single()
-        .execute()
-    )
-    if not sim.data or sim.data.get("status") != "finished":
-        st.info("Waiting for the simulation to be finished.")
+    if not sim_id:
+        st.error("No simulation selected in session.")
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
         return
 
-    # 3) Now that both are true, show the certify button
-    if st.button("✅ Certify Simulation Completed and View Team Results"):
-        st.session_state.teamwork=True
-        nav_to("team_results")
+    if role not in ("supervisor", "administrator"):
+        st.error("Only a supervisor / administrator can certify the simulation.")
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
+        return
+
+    # Navigation buttons
+    nav_cols = st.columns([1,1,3])
+    with nav_cols[0]:
+        if st.button("⬅️ Back"):
+            nav_to("menu_iniciar_simulação_supervisor")
+            return
+    with nav_cols[1]:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
+            return
+
+    st.markdown(f"**Simulation:** `{sim_name}` (id={sim_id})")
+
+    # --- Load TEAM Assessment ---
+    teamwork_row = fetch_teamwork(sim_id)
+    if not teamwork_row:
+        st.warning("🔒 Teamwork (TEAM) assessment not submitted yet. Please complete it before certification.")
+        if st.button("Go to TEAM Form"):
+            nav_to("page_one")
+        return
+
+    with st.expander("View TEAM Assessment Summary", expanded=False):
+        st.write(f"- Leadership: **{teamwork_row['leadership']}**")
+        st.write(f"- Teamwork: **{teamwork_row['teamwork']}**")
+        st.write(f"- Task Mgmt: **{teamwork_row['task_management']}**")
+        st.write(f"- Overall: **{teamwork_row['overall_performance']}**")
+        st.write(f"- Total: **{teamwork_row['total']}**")
+        if teamwork_row.get("comments"):
+            st.write(f"- Comments: _{teamwork_row['comments']}_")
+
+    # --- Load Simulation Status ---
+    sim_status_row = fetch_sim_status(sim_id)
+    if not sim_status_row:
+        st.error("Could not load simulation status.")
+        return
+
+    status        = sim_status_row.get("status")
+    certified_at  = sim_status_row.get("certified_at")
+
+    st.markdown(f"**Current Simulation Status:** `{status}`")
+    if certified_at:
+        st.info(f"Already certified at: {certified_at}")
+    elif st.session_state.get("simulation_certified"):
+        st.info("Certified in this session (pending page refresh).")
+
+    # --- Allow finishing if still running/pending ---
+    can_finish = status in ("running", "pending")
+    finish_checkbox = False
+    if can_finish and not certified_at:
+        finish_checkbox = st.checkbox(
+            "Mark simulation as finished upon certification",
+            value=True
+        )
+
+    # --- Final Certification Action ---
+    if not certified_at and st.button("✅ Certify & View Team Results", type="primary"):
+        # 1) Optionally mark simulation finished
+        updates = {}
+        if can_finish and finish_checkbox:
+            updates["status"] = "finished"
+        # If you added certified_at column, set it
+        if "certified_at" in (sim_status_row.keys()):
+            # Use python UTC timestamp (or create RPC for now())
+            updates["certified_at"] = datetime.utcnow().isoformat() + "Z"
+
+        try:
+            if updates:
+                (supabase
+                 .from_("simulation")
+                 .update(updates)
+                 .eq("id", sim_id)
+                 .execute())
+            st.session_state.simulation_certified = True
+            st.success("✅ Simulation certified.")
+            nav_to("team_results")
+            return
+        except Exception as e:
+            st.error(f"❌ Certification failed: {e}")
+            return
+
+    # If already certified, just show button to go to results
+    if certified_at or st.session_state.get("simulation_certified"):
+        if st.button("🏆 View Team Results"):
+            nav_to("team_results")
+
 
 def page_team_results():
-    # 1) Guard: must have certified the simulation
-    sim = (
-        supabase
-        .from_("simulation")
-        .select("status, name")
-        .eq("id", st.session_state.simulation_id)
-        .maybe_single()
-        .execute()
-    )
-    if not sim.data or sim.data.get("status") != "finished":
-        st.info("Waiting for the system to mark this simulation as finished.")
+    """Display aggregated team performance, max comparisons, TEAM assessment, and export report."""
+    sim_id   = st.session_state.get("simulation_id")
+    sim_name = st.session_state.get("simulation_name", "")
+    if not sim_id:
+        st.error("No simulation selected.")
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
         return
-    
-    sim_name = sim.data.get("name")
-    sim_id = st.session_state.simulation_id
+
     st.header("🏆 Team Performance Results")
-    st.subheader(f"Simulation: {sim_name}")
+    st.subheader(f"Simulation: {sim_name} (id={sim_id})")
 
-    # 3) Load per-role aggregates from the `individual_results` view
-    try:
-        ind_res = (
-            supabase
-            .from_("individual_results")
-            .select(
-                "basic_life_support, primary_survey, secondary_survey, definitive_care, "
-                "crew_roles_communication, systems_procedural_knowledge"
-            )
-            .eq("simulation_id", sim_id)
-            .execute()
-        )
-        ind_data = ind_res.data or []
-    except Exception as e:
-        st.error(f"❌ Couldn’t load decision-maker results: {e}")
-        ind_data = []
-    
-    try:
-        # 0a) find the Flight Director’s participant.id
-        fd_part = (
-            supabase
-            .from_("participant")
-            .select("id")
-            .eq("id_simulation", sim_id)
-            .eq("participant_role", "FD")
-            .maybe_single()
-            .execute()
-        )
-        fd_id = fd_part.data and fd_part.data.get("id")
-    except Exception as e:
-        st.error(f"❌ Could not load Flight Director’s ID: {e}")
-        return
+    # --- Sync snapshot (participants & answers) ---
+    sync_simulation_state(sim_id)
 
-    if not fd_id:
-        st.error("❌ Flight Director not found in this simulation.")
-        return
-
-    def fetch_fd_answer(prefix: str) -> str | None:
-        """Grab the one FD answer whose inject starts with prefix."""
+    # --- Check simulation finished (light cached fetch) ---
+    @st.cache_data(ttl=5)
+    def fetch_sim_status(sim_id_):
         try:
-            ans = (
-                supabase
-                .from_("answers")
-                .select("answer_text")
-                .eq("id_simulation", sim_id)
-                .eq("id_participant", fd_id)
-                .like("inject", f"{prefix}%")
-                .maybe_single()
-                .execute()
-            )
-            return ans.data and ans.data.get("answer_text")
+            res = (supabase
+                   .from_("simulation")
+                   .select("status,name,certified_at")
+                   .eq("id", sim_id_)
+                   .maybe_single()
+                   .execute())
+            return res.data
         except Exception:
             return None
 
-    a7  = fetch_fd_answer("Decision 7")
-    a13 = fetch_fd_answer("Decision 13")
-    a23 = fetch_fd_answer("Decision 23")
-    a34 = fetch_fd_answer("Decision 34")
-
-    if None in (a7, a13, a23, a34):
-        st.error("❌ Could not determine scenario code: missing one of FD’s key decisions.")
+    sim_row = fetch_sim_status(sim_id)
+    if not sim_row:
+        st.error("Could not load simulation status.")
+        return
+    if sim_row.get("status") != "finished":
+        st.info("⏳ Simulation not yet marked finished.")
+        if st.button("⬅️ Back"):
+            nav_to("certify_and_results")
         return
 
-    def prefix(ans: str) -> str:
-        return ans.split(".")[0].strip().lower()
-    
-    p7,  p13  = prefix(a7),  prefix(a13)
-    p23, p34 = prefix(a23), prefix(a34)
-        # build exactly “b7,c13,b23,b34”
-    scenario_code = f"{p7}7,{p13}13,{p23}23,{p34}34"
+    # --- Helpers ---
+    def normalize_inject(label: str) -> str:
+        import re
+        if not label:
+            return ""
+        m = re.match(r"^(Decision \d+|Inject \d+|Initial Situation)", label.strip())
+        return m.group(1) if m else label.strip()
 
-    if ind_data:
-        df_ind = pd.DataFrame(ind_data)
-        # Sum across all roles for each category
-        med_cats  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
-        proc_cats = ["crew_roles_communication", "systems_procedural_knowledge"]
-        med_cats_total  = ["basic_life_support_total", "primary_survey_total", "secondary_survey_total", "definitive_care_total"]
-        proc_cats_total = ["crew_roles_communication_total", "systems_procedural_knowledge_total"]
-        med_totals  = df_ind[med_cats].sum().to_dict()
-        proc_totals = df_ind[proc_cats].sum().to_dict()
-        team_actuals = {**med_totals, **proc_totals}
+    # --- Gather FD key decisions from cache ---
+    participants_cache = st.session_state.get("participants_cache", [])
+    answers_cache      = st.session_state.get("answers_cache", [])
 
-        # 2) fetch every max_score for this scenario
+    fd_id = next((p["id"] for p in participants_cache if p.get("participant_role") == "FD"), None)
+    if not fd_id:
+        st.error("Flight Director not found in participant list.")
+        return
+
+    key_needed = {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}
+    fd_key_answers = {}
+    for a in answers_cache:
+        if a["id_simulation"] != sim_id or a["id_participant"] != fd_id:
+            continue
+        pref = normalize_inject(a["inject"])
+        if pref in key_needed and a.get("answer_text") is not None:
+            fd_key_answers[pref] = a["answer_text"]
+
+    missing = [k for k in key_needed if k not in fd_key_answers]
+    if missing:
+        st.error(f"Missing FD key decisions: {', '.join(missing)}")
+        return
+
+    # --- Derive scenario code (replicate existing logic) ---
+    def scenario_token(dec_label: str, ans_text: str) -> str:
+        """
+        Turn FD answer_text into the letter-token used in scenario_code.
+        Original logic took the part before '.' and first char lowercased.
+        """
+        base = ans_text.split(".")[0].strip().lower()  # e.g. 'b something' → 'b something'
+        letter = base[0] if base else 'x'
+        number = dec_label.split()[-1]  # 'Decision 7' -> '7'
+        return f"{letter}{number}"
+
+    scenario_code = ",".join([
+        scenario_token("Decision 7",  fd_key_answers["Decision 7"]),
+        scenario_token("Decision 13", fd_key_answers["Decision 13"]),
+        scenario_token("Decision 23", fd_key_answers["Decision 23"]),
+        scenario_token("Decision 34", fd_key_answers["Decision 34"]),
+    ])
+
+    st.caption(f"**Scenario code derived:** `{scenario_code}`")
+
+    # --- Fetch individual_results (cached) ---
+    @st.cache_data(ttl=10)
+    def fetch_individual(sim_id_):
         try:
-            ms = (
-                supabase
-                .from_("max_scores")
-                .select("role,category,max_value")
-                .ilike("scenario_code", scenario_code)
-                .execute()
-            )
-            ms_data = ms.data or []
-        except Exception as e:
-            st.error(f"❌ Couldn’t load team max_scores: {e}")
-            ms_data = []
+            res = (supabase
+                   .from_("individual_results")
+                   .select("basic_life_support, primary_survey, secondary_survey, "
+                           "definitive_care, crew_roles_communication, systems_procedural_knowledge")
+                   .eq("simulation_id", sim_id_)
+                   .execute())
+            return res.data or []
+        except Exception:
+            return []
 
-        # 3) sum per category across all roles
-        df_ms = pd.DataFrame(ms_data)
+    ind_rows = fetch_individual(sim_id)
+    if not ind_rows:
+        st.info("No individual aggregate results yet.")
+        return
 
-        # 1) Normalize the category names to lowercase so they match med_cats/proc_cats
-        if not df_ms.empty:
-            df_ms["category"] = df_ms["category"].str.lower()
-            team_maxes = df_ms.groupby("category")["max_value"].sum().to_dict()
-        else:
-            team_maxes = {}
-        
-        if not df_ind.empty:
-            med_totals  = df_ind[med_cats].sum(axis=0).to_dict()
-            proc_totals = df_ind[proc_cats].sum(axis=0).to_dict()
-            team_actual_scores = {**med_totals, **proc_totals}
-        else:
-            team_actual_scores = {c: 0 for c in med_cats + proc_cats}
+    df_ind = pd.DataFrame(ind_rows)
 
-        cats = med_cats + proc_cats
+    MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
+    PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
+    ALL_CATS  = MED_CATS + PROC_CATS
 
-        # 2) Build 3 aligned lists: Category, Your Score, Max Score
-        team_actuals = {**med_totals, **proc_totals}
+    actual_totals = df_ind[ALL_CATS].sum().to_dict()
 
-        rows = []
-        for cat in med_cats + proc_cats:
-            your = team_actuals.get(cat, 0)                   # ← use the merged dict
-            mx   = team_maxes.get(f"{cat}_total", 0)          # if your max_keys ended up including "_total"
-            pct  = f"{100*your/mx:0.1f}%" if mx else "—"
-            rows.append([cat.replace("_"," ").title(), your, mx, pct])
+    # --- Fetch max_scores for scenario ---
+    @st.cache_data(ttl=10)
+    def fetch_max_scores(code: str):
+        try:
+            res = (supabase
+                   .from_("max_scores")
+                   .select("role, category, max_value, scenario_code")
+                   .eq("scenario_code", code)        # if exact match works; use .ilike if pattern
+                   .execute())
+            return res.data or []
+        except Exception:
+            return []
 
-        # 3) Compute subtotals and grand total
-        med_actual_sum  = sum(med_totals[c] for c in med_cats)
-        proc_actual_sum = sum(proc_totals[c] for c in proc_cats)
-        med_max_sum     = sum(team_maxes.get(f"{c}_total", 0) for c in med_cats)
-        proc_max_sum    = sum(team_maxes.get(f"{c}_total", 0) for c in proc_cats)
-        grand_actual    = med_actual_sum + proc_actual_sum
-        grand_max       = med_max_sum    + proc_max_sum
-
-        rows += [
-            ["Medical Knowledge",    med_actual_sum,  med_max_sum,  f"{100*med_actual_sum/med_max_sum:.1f}%" if med_max_sum else "—"],
-            ["Procedural Knowledge", proc_actual_sum, proc_max_sum, f"{100*proc_actual_sum/proc_max_sum:.1f}%" if proc_max_sum else "—"],
-            ["Total",                grand_actual,    grand_max,     f"{100*grand_actual/grand_max:.1f}%"    if grand_max    else "—"],
-        ]
-
-        # 4) Turn it into a DataFrame
-        df_team_vs_max = pd.DataFrame(
-            rows,
-            columns=["Category", "Team Score", "Max Score", "% of Maximum"]
-        )
-        
-        st.dataframe(df_team_vs_max)
+    ms_rows = fetch_max_scores(scenario_code)
+    if not ms_rows:
+        st.warning("No max_scores rows found for this scenario code.")
+        team_max_by_cat = {c: 0 for c in ALL_CATS}
     else:
-        st.info("No decision-maker aggregate found for this simulation.")
-        return  # nothing more to plot
-    
-    # 2) Load the supervisor’s TEAM assessment from the `teamwork` table
-    try:
-        tw_res = (
-            supabase
-            .from_("teamwork")
-            .select(
-                "id, id_simulation, leadership, teamwork, task_management, "
-                "overall_performance, total, comments, created_at"
-            )
-            .eq("id_simulation", sim_id)
-            .execute()
-        )
-        tw_data = tw_res.data or []
-    except Exception as e:
-        st.error(f"❌ Couldn’t load teamwork assessment: {e}")
-        tw_data = []
+        df_ms = pd.DataFrame(ms_rows)
+        df_ms["category"] = df_ms["category"].str.lower()
+        team_max_by_cat = df_ms.groupby("category")["max_value"].sum().to_dict()
+        # Ensure all categories present
+        for c in ALL_CATS:
+            team_max_by_cat.setdefault(c, 0)
 
-    if tw_data:
-        df_tw = pd.DataFrame(tw_data)
+    # --- Build table rows ---
+    rows = []
+    for cat in ALL_CATS:
+        actual = actual_totals.get(cat, 0)
+        mval   = team_max_by_cat.get(cat, 0)
+        pct    = f"{(100*actual/mval):.1f}%" if mval else "—"
+        rows.append([
+            cat.replace("_", " ").title(),
+            actual,
+            mval,
+            pct
+        ])
+
+    med_actual_sum  = sum(actual_totals[c] for c in MED_CATS)
+    med_max_sum     = sum(team_max_by_cat.get(c, 0) for c in MED_CATS)
+    proc_actual_sum = sum(actual_totals[c] for c in PROC_CATS)
+    proc_max_sum    = sum(team_max_by_cat.get(c, 0) for c in PROC_CATS)
+    grand_actual    = med_actual_sum + proc_actual_sum
+    grand_max       = med_max_sum + proc_max_sum
+
+    rows += [
+        ["Medical Knowledge", med_actual_sum, med_max_sum,
+         f"{100*med_actual_sum/med_max_sum:.1f}%" if med_max_sum else "—"],
+        ["Procedural Knowledge", proc_actual_sum, proc_max_sum,
+         f"{100*proc_actual_sum/proc_max_sum:.1f}%" if proc_max_sum else "—"],
+        ["Total", grand_actual, grand_max,
+         f"{100*grand_actual/grand_max:.1f}%" if grand_max else "—"]
+    ]
+
+    df_team_vs_max = pd.DataFrame(rows, columns=["Category", "Team Score", "Max Score", "% of Maximum"])
+    st.subheader("📊 Team Scores vs Maximum")
+    st.dataframe(df_team_vs_max, use_container_width=True)
+
+    # --- TEAM (supervisor) assessment ---
+    @st.cache_data(ttl=10)
+    def fetch_teamwork(sim_id_):
+        try:
+            res = (supabase
+                   .from_("teamwork")
+                   .select("leadership, teamwork, task_management, overall_performance, total, comments, created_at")
+                   .eq("id_simulation", sim_id_)
+                   .maybe_single()
+                   .execute())
+            return res.data
+        except Exception:
+            return None
+
+    tw_row = fetch_teamwork(sim_id)
+    if tw_row:
         st.subheader("🔹 Supervisor’s TEAM Assessment")
+        tw_labels  = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
+        tw_cols    = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
+        tw_values  = [tw_row[c] for c in tw_cols]
+        tw_maxes   = [8, 28, 8, 10, 54]  # domain maxima
 
-        # 1) Pull out the four domain scores + total
-        tw_cols = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
-        labels  = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
-        actuals = df_tw.loc[0, tw_cols].tolist()
-
-        # 2) Define the max‐possible for each domain + grand total
-        maxes = [8, 28, 8, 10, 54]
-
-        # 3) Draw a more compact grouped bar chart
-        x     = np.arange(len(labels))
-        width = 0.30
-
-        fig, ax = plt.subplots(figsize=(5, 2))  # smaller figure
-        ax.bar(x - width/2, actuals, width, label="Your Score")
-        ax.bar(x + width/2, maxes,   width, label="Max Possible", color="#cccccc")
+        x = np.arange(len(tw_labels))
+        width = 0.35
+        fig, ax = plt.subplots(figsize=(6, 3))
+        ax.bar(x - width/2, tw_values, width, label="Score")
+        ax.bar(x + width/2, tw_maxes,  width, label="Max")
         ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-        ax.set_ylim(0, max(maxes) * 1.05)
-        ax.set_ylabel("Points", fontsize=8)
-        ax.set_title("TEAM Scores vs Max", fontsize=10)
-        ax.legend(fontsize=8, loc="upper right")
+        ax.set_xticklabels(tw_labels, rotation=0)
+        ax.set_ylabel("Points")
+        ax.set_title("TEAM Scores vs Max")
+        ax.legend()
         fig.tight_layout()
-
         st.pyplot(fig, use_container_width=True)
+
+        with st.expander("TEAM Details"):
+            st.write(f"- Leadership: **{tw_row['leadership']}** / 8")
+            st.write(f"- Teamwork: **{tw_row['teamwork']}** / 28")
+            st.write(f"- Task Mgmt: **{tw_row['task_management']}** / 8")
+            st.write(f"- Overall: **{tw_row['overall_performance']}** / 10")
+            st.write(f"- Total: **{tw_row['total']}** / 54")
+            if tw_row.get("comments"):
+                st.write(f"_Comments:_ {tw_row['comments']}")
+
     else:
-        st.info("No teamwork assessment found for this simulation.")
+        st.info("No TEAM assessment found.")
 
+    st.markdown("---")
 
-    # Finally, download a team report PDF if desired
-    def build_team_pdf():
+    # --- PDF Generation (Lazy) ---
+    def build_team_pdf(df_scores: pd.DataFrame,
+                       team_assessment: dict | None,
+                       scenario_code_: str) -> io.BytesIO:
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table as RLTable, TableStyle, Image as RLImage
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.colors import HexColor
+
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=letter)
         styles = getSampleStyleSheet()
-        elems = [Paragraph("Team Performance Report", styles["Title"]), Spacer(1,12)]
+        elems = [
+            Paragraph("Team Performance Report", styles["Title"]),
+            Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
+            Paragraph(f"Scenario Code: {scenario_code_}", styles["Normal"]),
+            Spacer(1, 12),
+            Paragraph("Team Scores vs Maximum", styles["Heading2"])
+        ]
 
-        # 1) Table of Team vs Maximum Scores
-        data = [df_team_vs_max.columns.to_list()] + df_team_vs_max.values.tolist()
+        data = [df_scores.columns.tolist()] + df_scores.values.tolist()
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), HexColor("#4F81BD")),
-            ("TEXTCOLOR",   (0,0), (-1,0), colors.white),
-            ("GRID",        (0,0), (-1,-1), 0.25, colors.grey),
+            ("BACKGROUND", (0,0), (-1,0), HexColor("#1F4E78")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
             ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
-            ("ALIGN",      (1,1), (-1,-1), "CENTER"),
+            ("ALIGN", (1,1), (-1,-1), "CENTER"),
         ]))
         elems.append(tbl)
-        elems.append(Spacer(1,24))
+        elems.append(Spacer(1, 18))
 
-        # 2) TEAM vs Max bar chart
-        # reproduce that same matplotlib figure
-        tw_cols = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
-        labels  = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
-        actuals = df_tw.loc[0, tw_cols].tolist()
-        maxes   = [8, 28, 8, 10, 54]
-
-        x     = np.arange(len(labels))
-        width = 0.30
-        fig, ax = plt.subplots(figsize=(5, 2.5))
-        ax.bar(x - width/2, actuals, width, label="Your Score")
-        ax.bar(x + width/2, maxes,   width, label="Max Possible", color="#cccccc")
-        ax.set_xticks(x)
-        ax.set_xticklabels(labels, rotation=45, ha="right", fontsize=8)
-        ax.set_ylim(0, max(maxes) * 1.05)
-        ax.set_ylabel("Points", fontsize=8)
-        ax.set_title("TEAM Scores vs Max", fontsize=10)
-        ax.legend(fontsize=8, loc="upper right")
-        fig.tight_layout()
-
-        # save to buffer
-        img_buf = io.BytesIO()
-        fig.savefig(img_buf, format="PNG", dpi=150, bbox_inches="tight")
-        img_buf.seek(0)
-        elems.append(RLImage(img_buf, width=400, height=200))
-        elems.append(Spacer(1,24))
-
-        # 3) (optional) other charts…
-        # for fig in (fig_med, fig_proc, fig_radar):
-        #     buf_img = io.BytesIO()
-        #     fig.savefig(buf_img, format="PNG", bbox_inches="tight")
-        #     buf_img.seek(0)
-        #     elems.append(RLImage(buf_img, width=400, height=300))
-        #     elems.append(Spacer(1,12))
+        if team_assessment:
+            elems.append(Paragraph("TEAM Assessment", styles["Heading2"]))
+            elems.append(Paragraph(
+                f"Leadership: {team_assessment['leadership']} / 8, "
+                f"Teamwork: {team_assessment['teamwork']} / 28, "
+                f"Task Mgmt: {team_assessment['task_management']} / 8, "
+                f"Overall: {team_assessment['overall_performance']} / 10, "
+                f"Total: {team_assessment['total']} / 54",
+                styles["Normal"]
+            ))
+            if team_assessment.get("comments"):
+                elems.append(Paragraph(f"Comments: {team_assessment['comments']}", styles["Italic"]))
+            elems.append(Spacer(1, 12))
 
         doc.build(elems)
         buf.seek(0)
         return buf
 
-    def upload_report_to_storage(bucket_name: str, path: str, pdf_buffer: io.BytesIO) -> str | None:
-        """
-        Uploads pdf_buffer to `bucket_name` under `path`.
-        Returns the public URL (as a str), or None on failure (after st.error).
-        """
-        file_bytes = pdf_buffer.getvalue()
-        # 1) Try the upload; StorageApiError will be raised on RLS / permissions / etc.
-        try:
-            supabase.storage.from_(bucket_name).upload(
-                path,
-                file_bytes,
-                {"contentType": "application/pdf"},
+    col_pdf, col_nav = st.columns([1,1])
+    with col_pdf:
+        if st.button("📄 Generate PDF Report"):
+            pdf_buffer = build_team_pdf(df_team_vs_max, tw_row, scenario_code)
+            st.download_button(
+                "⬇️ Download Report",
+                data=pdf_buffer,
+                file_name=f"{sim_name}_team_report.pdf",
+                mime="application/pdf"
             )
-        except Exception as e:
-            return None
 
-        # 2) Fetch a public URL for that object
-        try:
-            public = supabase.storage.from_(bucket_name).get_public_url(path)
-            if isinstance(public, dict):
-                return public.get("publicURL") or public.get("publicUrl")
-            elif isinstance(public, str):
-                return public
-            else:
-                st.error(f"❌ Unexpected get_public_url response type: {type(public).__name__}")
-                return None
-        except Exception as e:
-            st.error(f"❌ Uploaded, but could not fetch public URL: {e}")
-            return None
-
-    pdf_buffer = build_team_pdf()
-    if pdf_buffer:
-        # let users download in-browser
-        st.download_button(
-            "📄 Download Team Report PDF",
-            data=pdf_buffer,
-            file_name=f"{sim_name}_team_report.pdf",
-            mime="application/pdf",
-        )
-
-        # also push it to your Supabase bucket
-        report_path = f"{sim_name}/team_report.pdf"
-        public_url = upload_report_to_storage("reports", report_path, pdf_buffer)
-
-    if st.button("Go back to Main Menu"):
-        nav_to("welcome")
-
+    with col_nav:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
 
 
 def page_simulation_menu():
@@ -1868,425 +2172,317 @@ def page_simulation_menu():
 
 
 def page_individual_results():
+    """Show the current participant's individual performance summary."""
+    sim_id   = st.session_state.get("simulation_id")
+    sim_name = st.session_state.get("simulation_name", "")
+    part_id  = st.session_state.get("participant_id")
+    dm_role  = st.session_state.get("dm_role")
+    user_role = st.session_state.get("user_role")
 
-    sim_name = st.session_state.simulation_name
-    dm_role  = st.session_state.dm_role
-    sim_id  = st.session_state.simulation_id   # BIGINT PK of simulation
-    part_id = st.session_state.participant_id 
-
-    if not sim_name or not dm_role:
-        st.error("No simulation or role selected.")
+    if not (sim_id and part_id and dm_role):
+        st.error("Simulation context or participant context missing.")
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
         return
 
-    # 1) Fetch raw answers from Supabase
-    try:
-        # 0a) find the Flight Director’s participant.id
-        fd_part = (
-            supabase
-            .from_("participant")
-            .select("id")
-            .eq("id_simulation", sim_id)
-            .eq("participant_role", "FD")
-            .maybe_single()
-            .execute()
-        )
-        fd_id = fd_part.data and fd_part.data.get("id")
-    except Exception as e:
-        st.error(f"❌ Could not load Flight Director’s ID: {e}")
-        return
+    st.header("📈 Your Individual Results")
+    st.caption(f"Simulation: **{sim_name}** | Role: **{dm_role}**")
 
+    # --- Sync snapshot (answers + participants) once ---
+    sync_simulation_state(sim_id)
+    answers_cache      = st.session_state.get("answers_cache", [])
+    participants_cache = st.session_state.get("participants_cache", [])
+
+    # Guard: ensure participant exists (or allow supervisor to inspect?)
+    if user_role not in ("supervisor", "administrator"):
+        if not any(p["id"] == part_id for p in participants_cache):
+            st.error("Your participant record was not found.")
+            return
+
+    # --- Locate FD participant id (from snapshot) ---
+    fd_id = next((p["id"] for p in participants_cache
+                  if p.get("participant_role") == "FD"), None)
     if not fd_id:
-        st.error("❌ Flight Director not found in this simulation.")
+        st.error("Flight Director not present in this simulation.")
         return
 
-    def fetch_fd_answer(prefix: str) -> str | None:
-        """Grab the one FD answer whose inject starts with prefix."""
+    # --- Normalize helper ---
+    import re
+    def norm_inject(lbl: str) -> str:
+        if not lbl:
+            return ""
+        m = re.match(r"^(Decision \d+|Inject \d+|Initial Situation)", lbl.strip())
+        return m.group(1) if m else lbl.strip()
+
+    # --- Extract FD key decisions from answers_cache (no extra queries) ---
+    key_needed = {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}
+    fd_key_answers = {}
+    for row in answers_cache:
+        if row["id_simulation"] != sim_id or row["id_participant"] != fd_id:
+            continue
+        pref = norm_inject(row["inject"])
+        if pref in key_needed and row.get("answer_text"):
+            fd_key_answers[pref] = row["answer_text"]
+
+    missing = [k for k in key_needed if k not in fd_key_answers]
+    if missing:
+        st.warning(f"Waiting for FD decisions: {', '.join(missing)}")
+        return
+
+    # --- Build scenario code (same convention as team results page) ---
+    def scenario_token(decision_label: str, ans_text: str) -> str:
+        base = ans_text.split(".")[0].strip().lower()
+        letter = base[0] if base else "x"
+        number = decision_label.split()[-1]
+        return f"{letter}{number}"
+
+    scenario_code = ",".join([
+        scenario_token("Decision 7",  fd_key_answers["Decision 7"]),
+        scenario_token("Decision 13", fd_key_answers["Decision 13"]),
+        scenario_token("Decision 23", fd_key_answers["Decision 23"]),
+        scenario_token("Decision 34", fd_key_answers["Decision 34"]),
+    ])
+    st.caption(f"Scenario code: `{scenario_code}`")
+
+    # --- Load individual_results row (cached) ---
+    @st.cache_data(ttl=10)
+    def fetch_individual_row(sim_id_, participant_id_):
         try:
-            ans = (
-                supabase
-                .from_("answers")
-                .select("answer_text")
-                .eq("id_simulation", sim_id)
-                .eq("id_participant", fd_id)
-                .like("inject", f"{prefix}%")
-                .maybe_single()
-                .execute()
-            )
-            return ans.data and ans.data.get("answer_text")
+            res = (supabase
+                   .from_("individual_results")
+                   .select("*")
+                   .eq("simulation_id", sim_id_)
+                   .eq("participant_id", participant_id_)
+                   .maybe_single()
+                   .execute())
+            return res.data
         except Exception:
             return None
 
-    a7  = fetch_fd_answer("Decision 7")
-    a13 = fetch_fd_answer("Decision 13")
-    a23 = fetch_fd_answer("Decision 23")
-    a34 = fetch_fd_answer("Decision 34")
-
-    if None in (a7, a13, a23, a34):
-        st.error("❌ Could not determine scenario code: missing one of FD’s key decisions.")
+    ind = fetch_individual_row(sim_id, part_id)
+    if not ind:
+        st.info("No aggregated individual results yet. Please complete more decisions.")
         return
 
-    scenario_code = f"7({a7})&13({a13})&23({a23})&34({a34})"
+    MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
+    PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
+
+    # Actual scores (floats for safety)
     try:
-        ans_res = (
-            supabase
-            .from_("answers")
-            .select("inject,answer_text")
-            .eq("id_simulation", sim_id)
-            .eq("id_participant", part_id)
-            .execute()
-        )
-    except Exception as e:
-        st.error(f"❌ Couldn’t load your answers: {e}")
+        med_actuals  = [float(ind[c]) for c in MED_CATS]
+        proc_actuals = [float(ind[c]) for c in PROC_CATS]
+        med_subtot   = float(ind.get("medical_knowledge_total", sum(med_actuals)))
+        proc_subtot  = float(ind.get("procedural_knowledge_total", sum(proc_actuals)))
+        actual_total = float(ind.get("score", med_subtot + proc_subtot))
+    except (TypeError, ValueError) as e:
+        st.error(f"Malformed numeric data in individual_results: {e}")
         return
 
-    # instead of `if ans_res.error:` do:
-    if not getattr(ans_res, "data", None):
-        st.error("❌ No answers found for you in this simulation.")
-        return
-    
-    # 2) Fetch per-role aggregates from your view
-    # Individual results
-    try:
-        ind_res = (
-            supabase
-            .from_("individual_results")
-            .select("*")
-            .eq("simulation_id",  sim_id)
-            .eq("participant_id", part_id)
-            .maybe_single()
-            .execute()
-        )
-    except Exception as e:
-        st.error(f"❌ Couldn’t load individual_results: {e}")
-        return
-    if not ind_res.data:
-        st.error("❌ No individual_results row found.")
-        return
+    # --- Fetch role-specific max scores for this scenario (cached) ---
+    @st.cache_data(ttl=10)
+    def fetch_role_maxes(role_, scen_code):
+        try:
+            res = (supabase
+                   .from_("max_scores")
+                   .select("category, max_value, scenario_code, role")
+                   .eq("role", role_)
+                   .eq("scenario_code", scen_code)  # use ilike if needed
+                   .execute())
+            return res.data or []
+        except Exception:
+            return []
 
-    ind = ind_res.data
-    # categories in your view
-    med_cats  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
-    proc_cats = ["crew_roles_communication", "systems_procedural_knowledge"]
-    med_cats_total = ["basic_life_support_total", "primary_survey_total", "secondary_survey_total", "definitive_care_total"]
-    proc_cats_total = ["crew_roles_communication_total", "systems_procedural_knowledge_total"]
+    max_rows = fetch_role_maxes(dm_role, scenario_code)
+    if not max_rows:
+        st.warning("No max_scores found for your role & scenario. Percentages unavailable.")
+    # Map categories (normalize lowercase)
+    role_max_map = {}
+    for r in max_rows:
+        cat = r["category"].lower()
+        role_max_map[cat] = float(r["max_value"])
 
-
-    med_actuals  = [ float(ind[c]) for c in med_cats ]
-    med_subtot   = float(ind["medical_knowledge_total"])
-    proc_actuals = [ float(ind[c]) for c in proc_cats ]
-    proc_subtot  = float(ind["procedural_knowledge_total"])
-    actual_total = float(ind["score"])
-
-    def prefix(ans: str) -> str:
-        return ans.split(".")[0].strip().lower()
-    
-    p7,  p13  = prefix(a7),  prefix(a13)
-    p23, p34 = prefix(a23), prefix(a34)
-        # build exactly “b7,c13,b23,b34”
-    scenario_code = f"{p7}7,{p13}13,{p23}23,{p34}34"
-
-
-    # Max scores
-    try:
-        max_res = (
-            supabase
-            .from_("max_scores")
-            .select("category,max_value")
-            .eq("role", dm_role)
-            .ilike("scenario_code", scenario_code)
-            # .ilike("scenario_code", f"%13({a13})%")
-            # .ilike("scenario_code", f"%23({a23})%")
-            # .ilike("scenario_code", f"%34({a34})%")
-            .execute()
-        )
-    except Exception as e:
-        st.error(f"❌ Couldn’t load max_scores: {e}")
-        return
-
-    if not max_res.data:
-        st.error(f"❌ No max_scores for role={dm_role} scenario={scenario_code}")
-        return
-
-    # lowercase the category so it matches your `med_cats` / `proc_cats`
-    max_for_me = {
-        r["category"].lower(): float(r["max_value"])
-        for r in max_res.data
-    }
-    
-    med_maxs     = [ max_for_me[c] for c in med_cats_total ]
+    # Compute max for each atomic category; fall back to 0 if missing
+    med_maxs  = [role_max_map.get(c, 0.0) for c in MED_CATS]
+    proc_maxs = [role_max_map.get(c, 0.0) for c in PROC_CATS]
     med_max_sub  = sum(med_maxs)
-    proc_maxs    = [ max_for_me[c] for c in proc_cats_total ]
     proc_max_sub = sum(proc_maxs)
     max_total    = med_max_sub + proc_max_sub
 
-    # ——— Load TLX responses for this participant ———
-    try:
-        tlx_res = (
-            supabase
-            .from_("taskload_responses")
-            .select("mental,physical,temporal,performance,effort,frustration")
-            .eq("id_simulation", sim_id)
-            .eq("id_participant", part_id)
-            .maybe_single()
-            .execute()
-        )
-    except Exception as e:
-        st.error(f"❌ Couldn’t load your TLX responses: {e}")
-        return
+    # --- TLX (taskload) load (cached) ---
+    @st.cache_data(ttl=10)
+    def fetch_tlx(sim_id_, participant_id_):
+        try:
+            res = (supabase
+                   .from_("taskload_responses")
+                   .select("mental,physical,temporal,performance,effort,frustration")
+                   .eq("id_simulation", sim_id_)
+                   .eq("id_participant", participant_id_)
+                   .maybe_single()
+                   .execute())
+            return res.data
+        except Exception:
+            return None
 
-    # If there was no row, tlx_res.data will be None
-    if not getattr(tlx_res, "data", None):
-        st.error("❌ No TLX responses found for you in this simulation.")
-        return
-    df_tlx = pd.DataFrame([tlx_res.data])
+    tlx_row = fetch_tlx(sim_id, part_id)
 
-    st.header("Your Individual Results")
-    st.write(f"Your scenario: {scenario_code}")
-
-
-    if not sim_name:
-        st.error("❗️ No simulation name found. Please go back and re-save your results.")
-        return
-
-    # … your data loading / totals / values code here …
+    # --- Layout: Medical & Procedural side-by-side ---
     col_med, col_proc = st.columns(2)
+    import numpy as np
+    import matplotlib.pyplot as plt
 
     with col_med:
         st.subheader("🩺 Medical Knowledge")
-        labels = med_cats + ["Subtotal"]
+        labels = MED_CATS + ["Subtotal"]
         your   = med_actuals + [med_subtot]
-        mx     = med_maxs     + [med_max_sub]
+        mx     = med_maxs    + [med_max_sub]
         x = np.arange(len(labels))
-        fig1, ax1 = plt.subplots(figsize=(6,4))
-        w = 0.35
-        ax1.bar(x - w/2, your, width=w, label="You")
-        ax1.bar(x + w/2, mx,   width=w, label="Max")
-        ax1.set_xticks(x)
-        ax1.set_xticklabels(labels, rotation=30, ha="right")
-        ax1.set_ylabel("Points")
-        ax1.legend()
-        st.pyplot(fig1, use_container_width=True)
+        fig_med, ax_med = plt.subplots(figsize=(5,3))
+        w = 0.4
+        ax_med.bar(x - w/2, your, width=w, label="You")
+        ax_med.bar(x + w/2, mx,   width=w, label="Max")
+        ax_med.set_xticks(x)
+        ax_med.set_xticklabels([l.replace("_"," ").title() for l in labels], rotation=30, ha="right")
+        ax_med.set_ylabel("Points")
+        ax_med.legend(fontsize=8)
+        fig_med.tight_layout()
+        st.pyplot(fig_med, use_container_width=True)
 
     with col_proc:
         st.subheader("⚙️ Procedural Knowledge")
-        labels = proc_cats + ["Subtotal"]
+        labels = PROC_CATS + ["Subtotal"]
         your   = proc_actuals + [proc_subtot]
         mx     = proc_maxs    + [proc_max_sub]
         x = np.arange(len(labels))
-        fig2, ax2 = plt.subplots(figsize=(6,4))
-        ax2.bar(x - w/2, your, width=w, label="You",   color="#73cf73")
-        ax2.bar(x + w/2, mx,   width=w, label="Max", color="#eeeeee")
-        ax2.set_xticks(x)
-        ax2.set_xticklabels(labels, rotation=30, ha="right")
-        ax2.set_ylabel("Points")
-        ax2.legend()
-        st.pyplot(fig2, use_container_width=True)
+        fig_proc, ax_proc = plt.subplots(figsize=(5,3))
+        ax_proc.bar(x - w/2, your, width=w, label="You")
+        ax_proc.bar(x + w/2, mx,   width=w, label="Max")
+        ax_proc.set_xticks(x)
+        ax_proc.set_xticklabels([l.replace("_"," ").title() for l in labels], rotation=30, ha="right")
+        ax_proc.set_ylabel("Points")
+        ax_proc.legend(fontsize=8)
+        fig_proc.tight_layout()
+        st.pyplot(fig_proc, use_container_width=True)
 
-    col1, col2 = st.columns(2)
-        # [2] second row: two radar charts side by side
-    with col1:
-        radar_cats = med_cats + proc_cats
-        vals       = med_actuals + proc_actuals
-        maxs       = med_maxs    + proc_maxs
-        angles     = np.linspace(0,2*np.pi,len(radar_cats),endpoint=False)
-        angles     = np.concatenate([angles, angles[:1]])
-        vals_wrap  = vals + [vals[0]]
-        maxs_wrap  = maxs + [maxs[0]]
-        st.subheader("📋 Total Skills Breakdown")
+    # --- Summary Table & TLX ---
+    col_table, col_tlx = st.columns(2)
 
-        # build the rows exactly as you did for the PDF
-        table_rows = []
-        # per‐category rows
-        for cat, your, mx in zip(
-            med_cats + proc_cats,
-            med_actuals + proc_actuals,
-            med_maxs    + proc_maxs
-        ):
-            pct = f"{100 * your / mx:0.1f}%" if mx > 0 else "—"
-            table_rows.append([cat, your, mx, pct])
+    # Build summary table rows
+    rows = []
+    for c, a, m in zip(MED_CATS, med_actuals, med_maxs):
+        pct = f"{100*a/m:.1f}%" if m else "—"
+        rows.append([c.replace("_"," ").title(), a, m, pct])
+    for c, a, m in zip(PROC_CATS, proc_actuals, proc_maxs):
+        pct = f"{100*a/m:.1f}%" if m else "—"
+        rows.append([c.replace("_"," ").title(), a, m, pct])
 
-        # subtotals and grand‐total
-        table_rows += [
-            ["Medical Knowledge",     med_subtot,   med_max_sub,   f"{100*med_subtot/med_max_sub:0.1f}%"],
-            ["Procedural Knowledge", proc_subtot,  proc_max_sub,  f"{100*proc_subtot/proc_max_sub:0.1f}%"],
-            ["Total",         actual_total, max_total,     f"{100*actual_total/max_total:0.1f}%"],
-        ]
+    rows += [
+        ["Medical Knowledge",    med_subtot,  med_max_sub,  f"{100*med_subtot/med_max_sub:.1f}%" if med_max_sub else "—"],
+        ["Procedural Knowledge", proc_subtot, proc_max_sub, f"{100*proc_subtot/proc_max_sub:.1f}%" if proc_max_sub else "—"],
+        ["Total",                actual_total, max_total,   f"{100*actual_total/max_total:.1f}%" if max_total else "—"]
+    ]
 
-        # turn it into a DataFrame and render
-        df_tot = pd.DataFrame(
-            table_rows,
-            columns=["Category", "Your Score", "Max. Score", "% of the Maximum"]
-        )
+    import pandas as pd
+    df_summary = pd.DataFrame(rows, columns=["Category", "Your Score", "Max Score", "% of Max"])
 
-        # you can use st.table for a static, nicely‐formatted view:
-        st.table(df_tot)
+    with col_table:
+        st.subheader("📋 Score Summary")
+        st.table(df_summary)
 
-    with col2:
-        tlx_cols = ["mental","physical","temporal","performance","effort","frustration"]
-        tlx_vals = df_tlx.loc[0, tlx_cols].tolist()
-        angles2  = np.linspace(0,2*np.pi,len(tlx_cols),endpoint=False)
-        angles2  = np.concatenate([angles2, angles2[:1]])
-        vals2    = tlx_vals + [tlx_vals[0]]
-        st.subheader("💼 Taskload Radar")
-        fig4, ax4 = plt.subplots(subplot_kw={"polar":True}, figsize=(6,6))
-        ax4.plot(angles2, vals2, linewidth=2)
-        ax4.fill(angles2, vals2, alpha=0.25)
-        ax4.set_xticks(angles2[:-1])
-        ax4.set_xticklabels(
-            ["Mental","Physical","Temporal","Performance","Effort","Frustration"],
-            fontsize=10
-        )
-        ax4.set_ylim(0, max(vals2)*1.1)
-        st.pyplot(fig4, use_container_width=True)
+    with col_tlx:
+        st.subheader("💼 Task Load (NASA TLX)")
+        if tlx_row:
+            tlx_cols = ["mental","physical","temporal","performance","effort","frustration"]
+            tlx_vals = [tlx_row[c] for c in tlx_cols]
+            angles = np.linspace(0, 2*np.pi, len(tlx_cols), endpoint=False)
+            angles = np.concatenate([angles, angles[:1]])
+            vals_wrap = tlx_vals + [tlx_vals[0]]
+            fig_tlx, ax_tlx = plt.subplots(subplot_kw={"polar":True}, figsize=(4,4))
+            ax_tlx.plot(angles, vals_wrap, linewidth=2)
+            ax_tlx.fill(angles, vals_wrap, alpha=0.25)
+            ax_tlx.set_xticks(angles[:-1])
+            ax_tlx.set_xticklabels([c.title() for c in tlx_cols], fontsize=8)
+            ax_tlx.set_ylim(0, max(vals_wrap)*1.1 if any(vals_wrap) else 1)
+            fig_tlx.tight_layout()
+            st.pyplot(fig_tlx, use_container_width=True)
+        else:
+            st.info("No TLX responses submitted.")
 
-    st.subheader("🔹 Your Answers")
+    st.markdown("---")
+    st.subheader("📝 Your Raw Answers")
 
-    try:
-        raw = (
-            supabase
-            .from_("answers")
-            .select(
-                "inject, answer_text, "
-                "basic_life_support, primary_survey, secondary_survey, definitive_care, "
-                "crew_roles_communication, systems_procedural_knowledge, response_time"
-            )
-            .eq("id_simulation", sim_id)
-            .eq("id_participant", part_id)
-            .execute()
-            .data
-        ) or []
-    except Exception as e:
-        st.error(f"❌ Couldn’t load raw answers: {e}")
-        raw = []
+    # Filter this participant’s answers (from cache)
+    my_answers = [a for a in answers_cache
+                  if a["id_simulation"] == sim_id
+                  and a["id_participant"] == part_id]
 
-    df_raw = pd.DataFrame(raw)
-
-    if df_raw.empty:
-        st.info("No answers to display yet.")
+    if not my_answers:
+        st.info("No answers recorded yet.")
     else:
-        order = list(st.session_state.question_text_map.keys())
-        df_raw["_order"] = df_raw["inject"].map(
-            lambda inj: order.index(inj) if inj in order else 999
-        )
+        # Optional: order by numeric decision/inject sequence if you stored that mapping
+        df_raw = pd.DataFrame(my_answers)
+        # Exclude inject steps if you only want decisions
+        df_show = df_raw[~df_raw["inject"].str.startswith("Inject")]
+        st.dataframe(df_show[["inject", "answer_text"]], use_container_width=True)
 
-        # filter out initial situation and all inject steps
-        df_raw = df_raw[
-            ~df_raw["inject"].str.startswith("Inject")
-            & (df_raw["inject"] != "Initial Situation")
+    # --- PDF (Lazy Build) ---
+    def build_pdf():
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table as RLTable, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
+        from reportlab.lib.colors import HexColor
+        import io as _io
+
+        buf = _io.BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=letter)
+        styles = getSampleStyleSheet()
+        elems = [
+            Paragraph(f"Individual Performance Report", styles["Title"]),
+            Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
+            Paragraph(f"Role: {dm_role}", styles["Normal"]),
+            Paragraph(f"Scenario Code: {scenario_code}", styles["Normal"]),
+            Spacer(1, 12),
+            Paragraph("Score Summary", styles["Heading2"])
         ]
 
-        df_raw = df_raw.sort_values("_order").drop(columns=["_order"])
-        st.dataframe(df_raw)
-
-    def build_pdf():
-        buffer = io.BytesIO()
-        doc    = SimpleDocTemplate(buffer, pagesize=letter)
-        styles = getSampleStyleSheet()
-        elems  = []
-
-        elems.append(Paragraph(f"Individual Report — {dm_role, sim_name}", styles["Title"]))
-        elems.append(Spacer(1,12))
-
-        # build table data
-        data = [["Category","Your Score","Max Score","% of the maximum"]]
-        for cat in med_cats + proc_cats:
-            your = float(ind[cat])
-            mx   = max_for_me.get(cat + "_total", 0.0)
-            pct  = f"{100*your/mx:.1f}%" if mx>0 else "—"
-            data.append([cat, f"{your:.1f}", f"{mx:.1f}", pct])
-
-        # then your subtotals:
-        data.append([
-            "Medical Knowledge",
-            f"{med_subtot:.1f}",
-            f"{med_max_sub:.1f}",
-            f"{100 * med_subtot/med_max_sub:.1f}%"
-        ])
-        data.append([
-            "Procedural Knowledge",
-            f"{proc_subtot:.1f}",
-            f"{proc_max_sub:.1f}",
-            f"{100 * proc_subtot/proc_max_sub:.1f}%"
-        ])
-        data.append([
-            "Total",
-            f"{actual_total:.1f}",
-            f"{max_total:.1f}",
-            f"{100 * actual_total/max_total:.1f}%"
-        ])
-
-        tbl = Table(data, hAlign="LEFT")
+        data = [df_summary.columns.tolist()] + df_summary.values.tolist()
+        tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
-            ("BACKGROUND",(0,0),(-1,0),HexColor("#4F81BD")),
+            ("BACKGROUND",(0,0),(-1,0),HexColor("#1F4E78")),
             ("TEXTCOLOR",(0,0),(-1,0),colors.white),
             ("GRID",(0,0),(-1,-1),0.25,colors.grey),
             ("BACKGROUND",(0,1),(-1,-1),colors.whitesmoke),
             ("ALIGN",(1,1),(-1,-1),"CENTER"),
         ]))
         elems.append(tbl)
-        elems.append(Spacer(1,24))
+        elems.append(Spacer(1, 18))
 
-        # now embed the four figs
-        for fig in (fig1, fig2, fig4):
-            img_buf = io.BytesIO()
-            fig.savefig(img_buf, format="PNG", dpi=150, bbox_inches="tight")
-            img_buf.seek(0)
-            elems.append(Image(img_buf, width=400, height=300))
+        # (Optional) embed static summary of TLX:
+        if tlx_row:
+            elems.append(Paragraph("TLX Scores", styles["Heading2"]))
+            tlx_text = ", ".join(f"{k.title()}: {v}" for k,v in tlx_row.items())
+            elems.append(Paragraph(tlx_text, styles["Normal"]))
             elems.append(Spacer(1,12))
 
         doc.build(elems)
-        buffer.seek(0)
-        return buffer
-    
-    def upload_report_to_storage(bucket_name: str, path: str, pdf_buffer: io.BytesIO) -> str | None:
-        """
-        Uploads pdf_buffer to `bucket_name` under `path`.
-        Returns the public URL (as a str), or None on failure (after st.error).
-        """
-        file_bytes = pdf_buffer.getvalue()
-        # 1) Try the upload; StorageApiError will be raised on RLS / permissions / etc.
-        try:
-            supabase.storage.from_(bucket_name).upload(
-                path,
-                file_bytes,
-                {"contentType": "application/pdf"},
+        buf.seek(0)
+        return buf
+
+    col_pdf, col_nav = st.columns([1,1])
+    with col_pdf:
+        if st.button("📄 Generate PDF"):
+            pdf_buf = build_pdf()
+            st.download_button(
+                "⬇️ Download PDF",
+                data=pdf_buf,
+                file_name=f"{dm_role.replace(' ','_')}_results.pdf",
+                mime="application/pdf"
             )
-        except Exception as e:
-            return None
 
-        # 2) Fetch a public URL for that object
-        try:
-            public = supabase.storage.from_(bucket_name).get_public_url(path)
-            # some versions return a dict, some a bare str
-            if isinstance(public, dict):
-                # try both common keys
-                return public.get("publicURL") or public.get("publicUrl")
-            elif isinstance(public, str):
-                return public
-            else:
-                st.error(f"❌ Unexpected get_public_url response type: {type(public).__name__}")
-                return None
+    with col_nav:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
 
-        except Exception as e:
-            st.error(f"❌ Uploaded, but could not fetch public URL: {e}")
-            return None
-
-
-
-
-    pdf_buffer = build_pdf()
-    if pdf_buffer:
-        st.download_button(
-            "📄 Download report PDF",
-            data=pdf_buffer,
-            file_name=f"{dm_role.replace(' ','_')}_report.pdf",
-            mime="application/pdf",
-        )
-        report_path = f"{st.session_state.simulation_name}/{dm_role.replace(' ','_')}_report.pdf"
-        public_url = upload_report_to_storage("reports", report_path, pdf_buffer)
-
-    if st.button("Go back to Main Menu"):
-        nav_to("welcome")
 
 
 def page_running_simulations():
@@ -2756,6 +2952,12 @@ def init_state():
     st.session_state.setdefault('simulation_id', None)
     st.session_state.setdefault('participant_id', None)
     st.session_state.setdefault("teamwork", False)
+
+    st.session_state.setdefault("answers_cache", [])        # lista acumulada de respostas (delta merge)
+    st.session_state.setdefault("last_answer_id", 0)        # maior ID recebido até agora
+    st.session_state.setdefault("participants_cache", [])   # cache de participantes da simulação
+    st.session_state.setdefault("vitals_cache", [])         # cache de vitals (se aplicável)
+    st.session_state.setdefault("last_snapshot_ts", 0.0)
 
 def main():
     init_state()
