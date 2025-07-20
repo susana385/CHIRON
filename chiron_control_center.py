@@ -661,6 +661,10 @@ def participant_new_simulation():
     disabled_join = already_in
     help_text = "You are already in another simulation. Leave it first." if already_in else None
 
+    st.write("DEBUG disabled_join:", disabled_join, type(disabled_join))
+    st.write("DEBUG help_text:", help_text, type(help_text))
+
+
     if st.button("Join this Simulation", disabled=disabled_join, help=help_text):
         # reset delta caches to avoid leaking old answers context
         st.session_state.answers_cache      = []
