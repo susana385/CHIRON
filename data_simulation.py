@@ -52,8 +52,8 @@ astronauts = [
 
 
 def run(simulation_name: str, updates:int=10, delay:float=1.0):
-    # from streamlit_autorefresh import st_autorefresh
-    # st_autorefresh(interval=2000, limit=None, key="vitals_autorefresh")
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=2000, limit=None, key="vitals_autorefresh")
     if st.button("🔄 Refresh"):
             st.rerun()
 
