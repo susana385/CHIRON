@@ -523,6 +523,7 @@ def page_create_new_simulation():
 
 def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
+    st_autorefresh(interval=3_000, key="assing")
     # 1) load participants
     sim_meta = (
         supabase
@@ -573,13 +574,22 @@ def roles_claimed_supervisor():
             if role:
                 new_roles.append(role)
         # update simulation row: both roles_logged and participants_logged
-        supabase.from_("simulation") \
+        try:
+            resp = (
+                supabase
+                .from_("simulation")
                 .update({
                     "roles_logged":        new_roles,
                     "participants_logged": joined
-                }) \
-                .eq("id", sim_id) \
+                })
+                .eq("id", sim_id)
                 .execute()
+            )
+        except APIError as e:
+            err = e.args[0]
+            st.error("❌ Failed to save assignments: " + err.get("message", str(err)))
+            st.write(err)
+            return
         st.success("Roles updated.")
         st.rerun()
 
