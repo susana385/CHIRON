@@ -845,7 +845,7 @@ def page_dm_role_claim():
     parts = (
         supabase
         .from_("participant")
-        .select("id_profile, participant_role")
+        .select("id, id_profile, participant_role")
         .eq("id_simulation", sim_id)
         .execute()
         .data or []
