@@ -195,99 +195,104 @@ def page_login():
     """)
 
     st.header("Login or Sign Up")
-    email    = st.text_input("Email")
-    password = st.text_input("Password", type="password")
+    login_id      = st.text_input("Username or Email")
+    password      = st.text_input("Password", type="password")
 
-    # adicionado: profile type code para o sign-up
-    role_code = st.text_input(
-        "Profile type code: Only required for Sign Up ",
-        value=""
-    )
+    # only for sign-up:
+    signup_user   = st.text_input("New Username", value="")
+    signup_email  = st.text_input("New Email", value="")
+    role_code     = st.text_input("Profile type code (only for Sign Up)", value="")
 
     col1, col2 = st.columns(2)
     with col1:
         if st.button("Log In"):
-            if not email or not password:
-                st.error("Please enter email and password.")
+            if not login_id or not password:
+                st.error("Please enter username/email and password.")
                 return
+            # detect if user entered an email address or a username
+            if "@" in login_id:
+                    auth_params = {"email": login_id, "password": password}
+            else:
+                    # look up their email by username
+                prof = supabase.from_("profiles") \
+                            .select("email") \
+                            .eq("username", login_id) \
+                            .single().execute()
+                if prof.error or not prof.data:
+                    st.error("No such username.")
+                    return
+                auth_params = {"email": prof.data["email"], "password": password}
             try:
-                signin = auth.sign_in_with_password({
-                    "email": email,
-                    "password": password
-                })
+                signin = auth.sign_in_with_password(auth_params)
             except Exception as e:
                 st.error(f"Sign-in failed: {e}")
-            else:
+            
                 # fetch exactly one profile row
-                try:
-                    res = (
-                        supabase
-                        .from_("profiles")
-                        .select("id, username, role, profile_type_code")
-                        .eq("id", signin.user.id)
-                        .single()
-                        .execute()
+            try:
+                res = (
+                    supabase
+                    .from_("profiles")
+                    .select("id, username, role, profile_type_code")
+                    .eq("id", signin.user.id)
+                    .single()
+                    .execute()
                     )
-                except Exception as e:
-                    st.error(f"Could not load profile: {e}")
-                else:
-                    profile = res.data
-                    if profile:
-                        st.session_state.user      = signin.user
-                        st.session_state.user_role = profile["role"]
-                        st.session_state.simulation_id   = None
-                        st.session_state.simulation_name = None
-                        st.session_state.participant_id  = None
-                        st.session_state.profile   = profile
-                        st.session_state.profile_id = signin.user.id
-                        st.session_state.answers_cache      = []
-                        st.session_state.last_answer_id     = 0
-                        st.session_state.participants_cache = []
-                        st.session_state.last_snapshot_ts   = 0.0
-                        nav_to("welcome")
-                    else:
-                        st.error("❌ No profile found for this user.")
+            except Exception as e:
+                st.error(f"Could not load profile: {e}")
+            
+            profile = res.data
+            if not profile:
+                st.error("❌ No profile found for this user.")
+                return
+            st.session_state.user      = signin.user
+            st.session_state.user_role = profile["role"]
+            st.session_state.simulation_id   = None
+            st.session_state.simulation_name = None
+            st.session_state.participant_id  = None
+            st.session_state.profile   = profile
+            st.session_state.profile_id = signin.user.id
+            st.session_state.answers_cache      = []
+            st.session_state.last_answer_id     = 0
+            st.session_state.participants_cache = []
+            st.session_state.last_snapshot_ts   = 0.0
+            nav_to("welcome")
+                    
 
     with col2:
         if st.button("Sign Up"):
             # apenas no sign-up é obrigatório preencher o código
-            if not email or not password:
-                st.error("Email and password are required.")
+            if not signup_user.strip() or not signup_email.strip() or not password or not role_code.strip():
+                st.error("Username, email, password and profile type code are all required.")
                 return
-            if not role_code.strip():
-                st.error("❗ Você deve informar o profile type code para registar.")
+            code = int(role_code)
+            role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
+            if code not in role_map:
+                st.error("Invalid code.")
             else:
-                if not role_code.strip():
-                    st.error("You must enter a profile type code.")
+                try:
+                    auth_res = auth.sign_up({"email": signup_email, "password": password})
+                except Exception as e:
+                    st.error(f"Sign-up failed: {e}")
                 else:
-                    code = int(role_code)
-                    role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
-                    if code not in role_map:
-                        st.error("Invalid code.")
+                    try:
+                        sup_res = supabase\
+                            .from_("profiles")\
+                            .insert({
+                                "id":                auth_res.user.id,
+                                "username":          signup_user,
+                                "email":             signup_email,
+                                "role":              role_map[code],
+                                "profile_type_code": code
+                            })\
+                        .execute()
+                    except Exception as e:
+                        st.error(f"Could not create profile row: {e}")
                     else:
-                        try:
-                            auth_res = auth.sign_up({"email": email, "password": password})
-                        except Exception as e:
-                            st.error(f"Sign-up failed: {e}")
-                        else:
-                            try:
-                                sup_res = supabase\
-                                    .from_("profiles")\
-                                    .insert({
-                                        "id":   auth_res.user.id,
-                                        "username": email,
-                                        "role":     role_map[code],
-                                        "profile_type_code": code
-                                    })\
-                                    .execute()
-                            except Exception as e:
-                                st.error(f"Could not create profile row: {e}")
-                            else:
                                 # success if sup_res.data is non-empty
-                                if sup_res.data:
-                                    st.success("✅ Registered! Please confirm your email then Sign In.")
-                                else:
-                                    st.error("❌ Profile insert returned no data!")
+                        if sup_res.data:
+                            st.success("✅ Registered! Please confirm your email then Sign In.")
+                        else:
+                            st.error("❌ Profile insert returned no data!")
 # ------------------------------------------------------- Other functions -----------------------------------------------
 
 # teste de conexão
@@ -2875,7 +2880,7 @@ def page_running_simulations():
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
