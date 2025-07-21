@@ -309,9 +309,13 @@ def page_login():
                                     st.error(f"Insert failed: {sup_res.error.message}")
                                     return
                             except APIError as e:
-                                err: dict = e.args[0]                   # this is the full JSON error from Postgres
-                                st.error(f"🔴 Database error: {err.get('message')}")
-                                st.write(err)                          # show the full error dict in the app for debugging
+                                # e.args[0] _might_ be a dict, or just a string—handle both
+                                payload = e.args[0]
+                                st.write("🔍 Full error payload:", payload)
+                                if isinstance(payload, dict) and "message" in payload:
+                                    st.error("❌ Database error: " + payload["message"])
+                                else:
+                                    st.error("❌ Database error: " + str(payload))
                                 return
         with col2:
             if st.button("Cancel"):
