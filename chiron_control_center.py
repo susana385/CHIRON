@@ -733,6 +733,7 @@ def participant_new_simulation():
         st.session_state.simulation_id      = sim["id"]
         st.session_state.simulation_name    = sim["name"]
         my_username = st.session_state.profile["username"]
+        my_profile  = st.session_state.profile_id
 
         # 1) fetch current list
         resp = (
@@ -752,6 +753,13 @@ def participant_new_simulation():
                 .update({"participants_logged": current}) \
                 .eq("id", sim["id"]) \
                 .execute()
+            
+        supabase.from_("participant") \
+        .insert({
+            "id_simulation":   sim["id"],
+            "id_profile":      my_profile,
+            "participant_role": ""   # start unassigned
+        }).execute()
 
         # ────────────────────────────────────────────────────────────────
 
@@ -811,7 +819,8 @@ def page_dm_role_claim():
     # 3) Find *your* participant record
     me = next((p for p in parts if p["id_profile"] == user_id), None)
     if me is None:
-        st.error("🚫 You’re not a participant in this simulation.")
+        st.error("Waiting for the supervisor to invite you into this simulation…")
+        st_autorefresh(interval=3_000, key="wait_for_invite")
         return
 
     # 4) If you haven’t been assigned yet, wait & auto‑refresh
