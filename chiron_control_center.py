@@ -287,6 +287,7 @@ def page_login():
                                 "email":    signup_email,
                                 "password": signup_password
                             })
+                            st.write(auth_res.user.id)
                         except Exception as e:
                             st.error(f"Sign‑up failed: {e}")
                         else:
@@ -300,7 +301,8 @@ def page_login():
                                 })\
                                 .execute()
                             if sup_res.error:
-                                st.error(f"Could not create profile: {sup_res.error.message}")
+                                st.error("Profile insert failed: " + sup_res.error.message)
+                                return
                             else:
                                 st.success("✅ Registered! Check your email, then come back to log in.")
         with col2:
