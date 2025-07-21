@@ -736,124 +736,63 @@ def _load_sim_and_participants(sim_id: str):
     return sim_row, parts
 
 
-def page_dm_role_claim(key_prefix: str = ""):
+def page_dm_role_claim():
+    
     st.header("Claim Your Role")
 
-    # 1) Poll while we’re still waiting to join
-    sim_id = st.session_state.get("simulation_id")
-    if not sim_id:
-        st.warning("🔒 No simulation selected yet — waiting for supervisor.")
-        st_autorefresh(interval=5000, key=f"{key_prefix}-wait")
-        return
-
-    st_autorefresh(interval=5000, key=f"{key_prefix}-poll")
-
-    try:
-        sim_row, parts = _load_sim_and_participants(sim_id)
-        if not sim_row:
-            st.error("❌ Simulation not found.")
-            return
-    except Exception as e:
-        st.error(f"❌ Could not load simulation or participants: {e}")
-        return
-
-    name = sim_row.get("name","")
-    roles_logged = sim_row.get("roles_logged") or []
-    taken_set = set(roles_logged)
-    claimed_count = len(roles_logged)
-
-    st.subheader(f"Simulation: **{name}**")
-    if st.button("Go back to the Main Menu", key=f"{key_prefix}-back"):
-            nav_to("welcome")
-
-    # 3) Show roles already taken
-    st.subheader("Roles Status")
-    st.write(f"Roles claimed: **{claimed_count}/8**")
-    if roles_logged:
-        missing = [r for r in ALL_ROLES if r not in taken_set]
-        st.markdown("**Claimed:** " + ", ".join(roles_logged))
-        if missing:
-            st.markdown("**Available:** " + ", ".join(missing))
-    else:
-        st.info("No roles claimed yet.")
-    if st.button("🔄 Refresh", key=f"{key_prefix}-refresh"):
-        _load_sim_and_participants.clear()
-        st.rerun()
-
-    # 4) Have I already claimed one?
+    sim_id  = st.session_state.simulation_id
     user_id = st.session_state.user.id
-    me_row = next((p for p in parts if p["id_profile"] == user_id), None)
-    if me_row:
-        st.success(f"✅ You are **{me_row['participant_role']}**.")
-        st.session_state.participant_id = me_row["id"]
-        st.session_state.dm_role = me_row["participant_role"]
-        if claimed_count == MAX_ROLES and st.button("▶️ Start Simulation", key=f"{key_prefix}-start"):
-            st.session_state.answers_cache = []
-            st.session_state.last_answer_id = 0
-            st.session_state.participants_cache = []
-            st.session_state.last_snapshot_ts = 0.0
-            nav_to("dm_questionnaire")
-        else:
-            st.info(f"Waiting for all roles… ({claimed_count}/{MAX_ROLES})")
+
+    # 1) Load all participant rows for this simulation
+    parts = (
+        supabase
+        .from_("participant")
+        .select("id_profile, participant_role")
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or []
+    )
+
+    # 2) Load their usernames
+    profile_ids = [p["id_profile"] for p in parts]
+    profiles = (
+        supabase
+        .from_("profiles")
+        .select("id, username")
+        .in_("id", profile_ids)
+        .execute()
+        .data or []
+    )
+    username_map = {p["id"]: p["username"] for p in profiles}
+
+    # 3) Find *your* participant record
+    me = next((p for p in parts if p["id_profile"] == user_id), None)
+    if me is None:
+        st.error("🚫 You’re not a participant in this simulation.")
         return
 
-    # 5) Otherwise show the “pick a role” form
-    st.markdown("---")
-    st.subheader("Select Your Role")
-    available = [r for r in ALL_ROLES if r not in taken_set]
-    choice = st.selectbox("Choose your role", options=available, key=f"{key_prefix}-role_choice")
+    # 4) If you haven’t been assigned yet, wait & auto‑refresh
+    if not me.get("participant_role"):
+        st.info("Waiting for your supervisor to assign your role…")
+        st_autorefresh(interval=3_000, key="wait_for_role")
+        return
 
-    # 6) Show its description immediately
-    st.write(questionnaire1.roles.get(choice, "_No description available._"))
+    # 5) Show your role
+    st.success(f"✅ Your assigned role: **{me['participant_role']}**")
 
-    if st.button("Submit Role", key=f"{key_prefix}-submit_role"):
-        _load_sim_and_participants.clear()
-        latest_sim, latest_parts = _load_sim_and_participants(sim_id)
-        latest_roles = set(latest_sim.get("roles_logged") or [])
-        if choice in latest_roles:
-            st.warning(f"Role **{choice}** was just taken. Pick another.")
-            st.rerun()
-            return
-        try:
-            ins = (supabase
-                   .from_("participant")
-                   .insert({
-                       "id_simulation": sim_id,
-                       "participant_role": choice,
-                       "id_profile": user_id
-                   })
-                   .execute())
-            new_pid = ins.data[0]["id"]
-            st.session_state.participant_id = new_pid
-            st.session_state.dm_role = choice
-        except Exception as e:
-            st.error(f"❌ Could not register you as participant: {e}")
-            return
-        try:
-            new_roles = list(latest_roles) + [choice]
-            up = (supabase
-                  .from_("simulation")
-                  .update({"roles_logged": new_roles})
-                  .eq("id", sim_id)
-                  .execute())
-            if not up.data:
-                raise RuntimeError("Empty update response.")
-        except Exception as e:
-            st.error(f"❌ Could not update simulation roles: {e}")
-            return
-        st.success(f"✅ Role **{choice}** claimed!")
-        _load_sim_and_participants.clear()
-        st.rerun()
+    # 6) Show the full roster
+    st.markdown("### Team Roster")
+    for p in parts:
+        uname = username_map.get(p["id_profile"], "Unknown")
+        role  = p["participant_role"] or "_Unassigned_"
+        st.write(f"- **{uname}** → {role}")
 
-    # 7) Fallback “waiting” UI if they somehow fall through
-    if claimed_count == 8:
-        st.markdown("---")
-        if st.button("▶️ Start Simulation", key=f"{key_prefix}-fallback_start"):
-            st.session_state.dm_stage = 0
-            st.session_state.dm_finished = False
+    # 7) Only let them start once everyone has a role
+    if all(p.get("participant_role") for p in parts) and len(parts) == 8:
+        if st.button("▶️ Start Simulation"):
             nav_to("dm_questionnaire")
     else:
-        st.info(f"Waiting for all roles ({claimed_count}/8 claimed)…")
+        st.info(f"Waiting until all {len(parts)} participants have roles…")
 
 # ------------------------------------------------------- Page 4 Participant ----------------------------------------------------------
 
