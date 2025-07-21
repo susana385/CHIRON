@@ -213,9 +213,10 @@ def page_login():
                                 .select("email") \
                                 .eq("username", login_id) \
                                 .single().execute()
-                    if prof.error or not prof.data:
+                    if not getattr(prof, "data", None):
                         st.error("No such username.")
                         return
+
                     auth_params = {"email": prof.data["email"], "password": password}
                 try:
                     signin = auth.sign_in_with_password(auth_params)
