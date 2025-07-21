@@ -1792,7 +1792,20 @@ def page_teamwork_survey():
                 "total":               total,
                 "comments":            r.get("COMMENTS", "")
             }
-            supabase.from_("teamwork").insert(payload).execute()
+            try:
+                ins_res = (
+                    supabase
+                    .from_("teamwork")
+                    .insert(payload)
+                    .execute()
+                )
+                # If it didn’t raise, you can also inspect ins_res.data:
+                st.write("🔍 Insert response:", ins_res.__dict__)
+            except APIError as e:
+                err = e.args[0]  # the full PostgREST JSON error
+                st.error("❌ Could not insert TEAM record:")
+                st.write(err)    # show message, code, hint, details
+                return
 
         st.success("✅ All three TEAM assessments submitted!")
         nav_to("certify_and_results")
