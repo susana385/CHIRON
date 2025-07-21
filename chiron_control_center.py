@@ -25,6 +25,7 @@ from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
 from typing import Dict
 import time, random
+from postgrest.exceptions import APIError
 
 
 st.set_page_config(
@@ -291,20 +292,27 @@ def page_login():
                         except Exception as e:
                             st.error(f"Sign‑up failed: {e}")
                         else:
-                            sup_res = supabase.from_("profiles")\
-                                .insert({
-                                    "id":                auth_res.user.id,
-                                    "username":          signup_user,
-                                    "email":             signup_email,
-                                    "role":              role_map[code],
-                                    "profile_type_code": code
-                                })\
-                                .execute()
-                            if sup_res.error:
-                                st.error("Profile insert failed: " + sup_res.error.message)
+                            try:
+                                sup_res = (
+                                    supabase
+                                    .from_("profiles")
+                                    .insert({
+                                        "id":                auth_res.user.id,
+                                        "username":          signup_user,
+                                        "email":             signup_email,
+                                        "role":              role_map[code],
+                                        "profile_type_code": code
+                                    })
+                                    .execute()
+                                )
+                                if sup_res.error:
+                                    st.error(f"Insert failed: {sup_res.error.message}")
+                                    return
+                            except APIError as e:
+                                err: dict = e.args[0]                   # this is the full JSON error from Postgres
+                                st.error(f"🔴 Database error: {err.get('message')}")
+                                st.write(err)                          # show the full error dict in the app for debugging
                                 return
-                            else:
-                                st.success("✅ Registered! Check your email, then come back to log in.")
         with col2:
             if st.button("Cancel"):
                 st.session_state.show_signup = False
