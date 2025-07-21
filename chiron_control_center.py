@@ -1881,7 +1881,6 @@ def page_certify_and_results():
             .eq("id_simulation", sim_id)
             .execute()
         )
-        st.write("🔍 teamwork select response:", res.__dict__)
         teamwork_rows = res.data or []
     except APIError as e:
         err = e.args[0]
@@ -1927,7 +1926,6 @@ def page_certify_and_results():
             .single()
             .execute()
         )
-        st.write("🔍 simulation select response:", res.__dict__)
         sim_meta = res.data or {}
     except APIError as e:
         err = e.args[0]
