@@ -566,6 +566,13 @@ def roles_claimed_supervisor():
         submitted = st.form_submit_button("Save Assignments")
 
     if submitted:
+        for pid, role in assignments.items():
+            supabase.from_("participant") \
+                .update({"participant_role": role or None}) \
+                .eq("id", pid) \
+                .execute()
+
+        # 2) Re-build the arrays you’ll persist to simulation
         new_roles = [role for role in assignments.values() if role]
         joined    = sim_meta.get("participants_logged", [])
 
