@@ -1145,22 +1145,25 @@ def page_live_dashboard():
     # answer_idx = build_answer_index()
 
     # Optional: manual hard refresh (bust ttl)
-    col_top = st.columns([1,1,1,3])
-    with col_top[0]:
-        if st.button("🏠 Main Menu"):
-            nav_to("welcome")
-            return
-    with col_top[1]:
+    col1, col2, col3 = st.columns([3, 3, 1])
+
+    with col1:
         if st.button("⬅️ Back"):
             nav_to("menu_iniciar_simulação_supervisor")
-            return
-    with col_top[2]:
+
+    with col2:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
+
+    with col3:
         if st.button("🔄 Hard Refresh", key="refresh_force"):
             fetch_snapshot.clear()
             sync_simulation_state(sim_id)
             st.rerun()
 
     st.subheader(f"Simulation: {sim_name}")
+    from streamlit_autorefresh import st_autorefresh
+    st_autorefresh(interval=2000, limit=None, key="vitals_autorefresh")
 
     # 2) Build roster from participants_cache (no new query)
     participants_cache = st.session_state.get("participants_cache", [])
@@ -1456,9 +1459,7 @@ def page_dashboard():
            interested_roles.__contains__(role_by_pid.get(a["id_participant"], ""))
     ]
 
-    if not relevant_rows:
-        st.info("No FD/FS answers yet. Waiting for first inputs…")
-    else:
+    if relevant_rows:
         # 3) Build inject -> list[answer_text]
         #    (consistent with what apply_vital_consequences expects)
         answers_for_effects = {}
