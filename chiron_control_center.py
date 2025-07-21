@@ -1873,30 +1873,55 @@ def page_certify_and_results():
     st.markdown(f"**Simulation:** `{sim_name}` (id={sim_id})")
 
     # --- Load TEAM Assessment ---
-    teamwork_row = fetch_teamwork(sim_id)
-    if not teamwork_row:
-        st.warning("🔒 Teamwork (TEAM) assessment not submitted yet. Please complete it before certification.")
+    teamwork_rows = (
+        supabase
+        .from_("teamwork")
+        .select("team, leadership, teamwork, task_management, overall_performance, total, comments")
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or []
+    )
+    if len(teamwork_rows) < 3:
+        st.warning(f"🔒 Only {len(teamwork_rows)}/3 TEAM assessments submitted. Please complete all three before certification.")
         if st.button("Go to TEAM Form"):
-            nav_to("page_one")
+            nav_to("teamwork_survey")
         return
 
+    # --- Expand to show each team's scores plus combined averages ---
     with st.expander("View TEAM Assessment Summary", expanded=False):
-        st.write(f"- Leadership: **{teamwork_row['leadership']}**")
-        st.write(f"- Teamwork: **{teamwork_row['teamwork']}**")
-        st.write(f"- Task Mgmt: **{teamwork_row['task_management']}**")
-        st.write(f"- Overall: **{teamwork_row['overall_performance']}**")
-        st.write(f"- Total: **{teamwork_row['total']}**")
-        if teamwork_row.get("comments"):
-            st.write(f"- Comments: _{teamwork_row['comments']}_")
+        # Show each team’s individual scores
+        for row in teamwork_rows:
+            st.markdown(f"**{row['team']}**")
+            st.write(f"- Leadership: **{row['leadership']}**")
+            st.write(f"- Teamwork: **{row['teamwork']}**")
+            st.write(f"- Task Mgmt: **{row['task_management']}**")
+            st.write(f"- Overall: **{row['overall_performance']}**")
+            st.write(f"- Total: **{row['total']}**")
+            if row.get("comments"):
+                st.write(f"- Comments: _{row['comments']}_")
+            st.markdown("---")
+
+        # And now a simple average across all teams:
+        avg = lambda key: round(sum(r[key] for r in teamwork_rows) / len(teamwork_rows), 2)
+        st.markdown("**Combined Averages**")
+        st.write(f"- Leadership: **{avg('leadership')}**")
+        st.write(f"- Teamwork: **{avg('teamwork')}**")
+        st.write(f"- Task Mgmt: **{avg('task_management')}**")
+        st.write(f"- Overall: **{avg('overall_performance')}**")
+        st.write(f"- Total: **{avg('total')}**")
 
     # --- Load Simulation Status ---
-    sim_status_row = fetch_sim_status(sim_id)
-    if not sim_status_row:
-        st.error("Could not load simulation status.")
-        return
-
-    status        = sim_status_row.get("status")
-    certified_at  = sim_status_row.get("certified_at")
+    sim_meta = (
+        supabase
+        .from_("simulation")
+        .select("status, certified_at")
+        .eq("id", sim_id)
+        .single()
+        .execute()
+        .data or {}
+    )
+    status       = sim_meta.get("status")
+    certified_at = sim_meta.get("certified_at")
 
     st.markdown(f"**Current Simulation Status:** `{status}`")
     if certified_at:
@@ -1904,45 +1929,36 @@ def page_certify_and_results():
     elif st.session_state.get("simulation_certified"):
         st.info("Certified in this session (pending page refresh).")
 
-    # --- Allow finishing if still running/pending ---
-    can_finish = status in ("running", "pending")
-    finish_checkbox = False
-    if can_finish and not certified_at:
-        finish_checkbox = st.checkbox(
-            "Mark simulation as finished upon certification",
-            value=True
-        )
+    can_certify = not certified_at
+    if can_certify:
+        # Offer to mark as finished if still pending/running
+        finish_checkbox = False
+        if status in ("pending","running"):
+            finish_checkbox = st.checkbox("Mark simulation as finished on certification", value=True)
 
-    # --- Final Certification Action ---
-    if not certified_at and st.button("✅ Certify & View Team Results", type="primary"):
-        # 1) Optionally mark simulation finished
-        updates = {}
-        if can_finish and finish_checkbox:
-            updates["status"] = "finished"
-        # If you added certified_at column, set it
-        if "certified_at" in (sim_status_row.keys()):
-            # Use python UTC timestamp (or create RPC for now())
+        if st.button("✅ Certify & View Team Results", type="primary"):
+            updates = {}
+            if finish_checkbox:
+                updates["status"] = "finished"
+            # stamp the certified_at
             updates["certified_at"] = datetime.utcnow().isoformat() + "Z"
 
-        try:
-            if updates:
-                (supabase
-                 .from_("simulation")
-                 .update(updates)
-                 .eq("id", sim_id)
-                 .execute())
+            supabase.from_("simulation") \
+                .update(updates) \
+                .eq("id", sim_id) \
+                .execute()
+
             st.session_state.simulation_certified = True
             st.success("✅ Simulation certified.")
-            nav_to("team_results")
-            return
-        except Exception as e:
-            st.error(f"❌ Certification failed: {e}")
+            # Reload so we pick up certified_at
+            st.experimental_rerun()
             return
 
-    # If already certified, just show button to go to results
+    # ─── 4) Once certified, show the results button ────────────────────────
     if certified_at or st.session_state.get("simulation_certified"):
         if st.button("🏆 View Team Results"):
             nav_to("team_results")
+            return
 
 
 def page_team_results():
