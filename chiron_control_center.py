@@ -766,7 +766,7 @@ def participant_new_simulation():
                 .insert({
                     "id_simulation":   sim["id"],
                     "id_profile":      my_profile,
-                    "participant_role": ""
+                    "participant_role": None
                 })
                 .execute()
             )
