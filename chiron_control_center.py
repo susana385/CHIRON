@@ -2600,7 +2600,14 @@ def page_running_simulations():
             f"<div style='{other_col_style}'>{sim['name']}</div>",
             unsafe_allow_html=True
         )
-        started = pd.to_datetime(sim["started_at"]).strftime("%Y-%m-%d %H:%M:%S")
+        raw = sim.get("started_at")
+        ts  = pd.to_datetime(raw)
+
+        if pd.notna(ts):
+            started = ts.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            started = "—"
+
         c2.markdown(
             f"<div style='{other_col_style}'>{started}</div>",
             unsafe_allow_html=True
