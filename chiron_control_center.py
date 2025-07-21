@@ -1922,7 +1922,7 @@ def page_certify_and_results():
         res = (
             supabase
             .from_("simulation")
-            .select("status, certified_at")
+            .select("status")
             .eq("id", sim_id)
             .single()
             .execute()
@@ -1934,42 +1934,29 @@ def page_certify_and_results():
         st.error("❌ Could not read simulation meta:")
         st.write(err)
         return
+    
     status       = sim_meta.get("status")
-    certified_at = sim_meta.get("certified_at")
 
     st.markdown(f"**Current Simulation Status:** `{status}`")
-    if certified_at:
-        st.info(f"Already certified at: {certified_at}")
-    elif st.session_state.get("simulation_certified"):
-        st.info("Certified in this session (pending page refresh).")
 
-    can_certify = not certified_at
-    if can_certify:
-        # Offer to mark as finished if still pending/running
-        finish_checkbox = False
-        if status in ("pending","running"):
-            finish_checkbox = st.checkbox("Mark simulation as finished on certification", value=True)
-
+    
+    if status in ("pending","running"):
+        finish_checkbox = st.checkbox("Mark simulation as finished on certification", value=True)
         if st.button("✅ Certify & View Team Results", type="primary"):
             updates = {}
             if finish_checkbox:
                 updates["status"] = "finished"
-            # stamp the certified_at
-            updates["certified_at"] = datetime.utcnow().isoformat() + "Z"
-
             supabase.from_("simulation") \
                 .update(updates) \
                 .eq("id", sim_id) \
                 .execute()
-
             st.session_state.simulation_certified = True
             st.success("✅ Simulation certified.")
-            # Reload so we pick up certified_at
             st.rerun()
             return
 
     # ─── 4) Once certified, show the results button ────────────────────────
-    if certified_at or st.session_state.get("simulation_certified"):
+    if status=="finished" and len(teamwork_rows) == 3:
         if st.button("🏆 View Team Results"):
             nav_to("team_results")
             return
