@@ -16,7 +16,7 @@ from reportlab.lib.styles import getSampleStyleSheet
 from supabase_client import supabase, auth 
 from dotenv import load_dotenv
 #from supabase_client import supabase
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from questionnaire1 import get_inject_text
 from reportlab.platypus import Table, TableStyle, Image, Paragraph, Spacer
 from reportlab.lib import colors
@@ -522,81 +522,59 @@ def page_create_new_simulation():
                 nav_to("roles_claimed_supervisor")
 
 def roles_claimed_supervisor():
-    role = st.session_state.user_role
-    if role not in ("supervisor", "administrator"):
-        st.warning("🔒 Please wait for the Supervisor to create a simulation first.")
-        return
+    sim_id = st.session_state.simulation_id
+    # 1) load participants
+    parts = supabase.from_("participant") \
+                    .select("id, id_profile, participant_role") \
+                    .eq("id_simulation", sim_id) \
+                    .execute().data or []
 
-    sim_id = st.session_state.get("simulation_id")
-    sim_id = st.session_state.get("simulation_id")
-    if not sim_id:
-        st.error("No simulation selected.")
-        return
-    
+    # 2) load their usernames
+    profile_ids = [p["id_profile"] for p in parts]
+    profiles = supabase.from_("profiles") \
+                       .select("id, username") \
+                       .in_("id", profile_ids) \
+                       .execute().data or []
+    username_map = {prof["id"]: prof["username"] for prof in profiles}
 
-    # now sim_id is set; fetch the roles_logged
-    @st.cache_data(ttl=3)
-    def load_sim_roles(sim_id: str):
-        resp = (supabase
-                .from_("simulation")
-                .select("status, roles_logged, name, started_at")
-                .eq("id", sim_id)
-                .single()
-                .execute())
-        return resp.data
+    st.subheader("Assign Roles to Participants")
+    with st.form("assign_roles"):
+        assignments = {}
+        for p in parts:
+            uname = username_map.get(p["id_profile"], f"#{p['id_profile']}")
+            current = p.get("participant_role") or ""
+            options = [""] + ALL_ROLES  # "" → Unassigned
+            idx = options.index(current) if current in options else 0
+            assignments[p["id"]] = st.selectbox(f"{uname}", options, index=idx, key=f"role_{p['id']}")
+        submitted = st.form_submit_button("Save Assignments")
 
-    sim_row = load_sim_roles(sim_id)
-    if not sim_row:
-        st.error("❌ Could not load simulation (empty response).")
-        return
-    name         = sim_row.get("name","")
-    roles_logged = sim_row.get("roles_logged") or []
-    status       = sim_row.get("status")
-    
-    st.subheader(f"New Simulation: **{name}**")
+    if submitted:
+        new_roles = []
+        for pid, role in assignments.items():
+            supabase.from_("participant") \
+                    .update({"participant_role": role}) \
+                    .eq("id", pid).execute()
+            if role:
+                new_roles.append(role)
+        # update simulation row
+        supabase.from_("simulation") \
+                .update({"roles_logged": new_roles}) \
+                .eq("id", sim_id).execute()
+        st.success("Roles updated.")
+        st.experimental_rerun()
 
-    #roles_logged = sim_res.data.get("roles_logged") or []
-
-    st.subheader("Roles Claimed")
-    if not roles_logged:
-        st.write("_None yet_")
-    else:
-        missing = [r for r in ("FD","FS","CAPCOM")
-                   if r not in roles_logged]
-        st.markdown("**Current:** " + ", ".join(roles_logged))
-        if missing:
-            st.markdown("**Missing:** " + ", ".join(missing))
-        st.progress(len(roles_logged)/8)
-    
-    if st.button("🔄 Refresh"):
-        load_sim_roles.clear()
-        st.rerun()
-    
-    can_start = (len(roles_logged) == 8)
-    if st.button("▶️ Start Simulation", disabled=not can_start):
-        # Use a proper timestamp; let backend set started_at via RPC or now in Python:
-        from datetime import datetime, timezone
-        started_at = datetime.now(timezone.utc).isoformat()
-        try:
+    # 5) start button enabled only when len(parts)==8 and none are blank
+    if all(p.get("participant_role") for p in parts) and len(parts) == 8:
+        if st.button("▶️ Start Simulation"):
             supabase.from_("simulation") \
-                .update({"status": "running", "started_at": started_at}) \
-                .eq("id", sim_id) \
-                .execute()
-        except Exception as e:
-            st.error(f"❌ Failed to start simulation: {e}")
-            return
-        # Reset live caches for new phase
-        st.session_state.answers_cache      = []
-        st.session_state.last_answer_id     = 0
-        st.session_state.participants_cache = []
-        st.session_state.last_snapshot_ts   = 0.0
-        st.session_state.dm_stage     = 0
-        st.session_state.dm_finished  = False
-        load_sim_roles.clear()
-        nav_to("menu_iniciar_simulação_supervisor")
+                    .update({
+                        "status": "running",
+                        "started_at": datetime.now(timezone.utc).isoformat()
+                    }).eq("id", sim_id).execute()
+            nav_to("menu_iniciar_simulação_supervisor")
+    else:
+        st.info(f"{len(parts)} joined; fill all roles to start.")
 
-    if st.button("Go back to the Main Menu"):
-            nav_to("welcome")
 
 def page_supervisor_menu():
 
