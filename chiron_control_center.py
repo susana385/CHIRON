@@ -523,10 +523,8 @@ def page_create_new_simulation():
 
 def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
-    st.subheader("Assign Roles to Participants")
     st_autorefresh(interval=3_000, key="assing")
     # 1) load participants
-
     sim_meta = (
         supabase
         .from_("simulation")
@@ -556,7 +554,7 @@ def roles_claimed_supervisor():
                        .execute().data or []
     username_map = {prof["id"]: prof["username"] for prof in profiles}
 
-
+    st.subheader("Assign Roles to Participants")
     with st.form("assign_roles"):
         assignments = {}
         for p in parts:
@@ -568,14 +566,9 @@ def roles_claimed_supervisor():
         submitted = st.form_submit_button("Save Assignments")
 
     if submitted:
-        new_roles = []
-        for pid, role in assignments.items():
-            supabase.from_("participant") \
-                    .update({"participant_role": role}) \
-                    .eq("id", pid).execute()
-            if role:
-                new_roles.append(role)
-        # update simulation row: both roles_logged and participants_logged
+        new_roles = [role for role in assignments.values() if role]
+        joined    = sim_meta.get("participants_logged", [])
+
         try:
             resp = (
                 supabase
@@ -801,8 +794,7 @@ def _load_sim_and_participants(sim_id: str):
 
 def page_dm_role_claim():
 
-    st.header("Role Assignement")
-    st_autorefresh(interval=2000, limit=None, key="claim role")
+    st.header("Claim Your Role")
 
     sim_id  = st.session_state.simulation_id
     user_id = st.session_state.user.id
