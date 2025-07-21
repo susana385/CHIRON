@@ -799,7 +799,8 @@ def _load_sim_and_participants(sim_id: str):
 
 def page_dm_role_claim():
 
-    st.header("Claim Your Role")
+    st.header("Role Assignement")
+    st_autorefresh(interval=2000, limit=None, key="claim role")
 
     sim_id  = st.session_state.simulation_id
     user_id = st.session_state.user.id
