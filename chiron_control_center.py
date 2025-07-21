@@ -759,12 +759,22 @@ def participant_new_simulation():
                 .eq("id", sim["id"]) \
                 .execute()
             
-        supabase.from_("participant") \
-        .insert({
-            "id_simulation":   sim["id"],
-            "id_profile":      my_profile,
-            "participant_role": ""   # start unassigned
-        }).execute()
+        try:
+            resp = (
+                supabase
+                .from_("participant")
+                .insert({
+                    "id_simulation":   sim["id"],
+                    "id_profile":      my_profile,
+                    "participant_role": ""
+                })
+                .execute()
+            )
+        except APIError as e:
+            err = e.args[0]
+            st.error("❌ Could not join simulation:")
+            st.write(err)           # show full dict (code, message, hint, detail)
+            return
 
         # ────────────────────────────────────────────────────────────────
 
