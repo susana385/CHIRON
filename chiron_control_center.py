@@ -322,14 +322,15 @@ def page_login():
                 
 
                 # 5) Verify the insert really happened
-                if sup_res.status_code != 201 or not sup_res.data:
-                    st.error(f"❌ Failed to create profile (status {sup_res.status_code})")
+                # sup_res.data is a list of the inserted rows
+                if not getattr(sup_res, "data", None):
+                    st.error("❌ Failed to create profile.")
                     return
 
-                # 6) Success! Tell the user and maybe auto‐navigate back to login
-                st.success("✅ Registered! Please confirm your email, then use the Log In form above.")
-                # Optionally hide the signup form:
+                # success!
+                st.success("✅ Registered! Please confirm your email, then log in.")
                 st.session_state.show_signup = False
+
         with col2:
             if st.button("Cancel"):
                 st.session_state.show_signup = False
