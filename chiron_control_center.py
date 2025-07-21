@@ -1625,45 +1625,35 @@ def page_teamwork_survey():
 
     st.subheader(f"TEAM Questionnaire – Simulation: **{sim_name}**")
 
-    # Prevent duplicates: see if one already exists
-    @st.cache_data(ttl=5)
-    def _load_existing_teamwork(sim_id_: int):
-        try:
-            res = (supabase
-                   .from_("teamwork")
-                   .select("id, leadership, teamwork, task_management, overall_performance, total, comments")
-                   .eq("id_simulation", sim_id_)
-                   .maybe_single()
-                   .execute())
-            return res.data
-        except Exception:
-            return None
+    teams = ["Mcc crew", "Astronaut crew", "All crew"]
 
-    existing = _load_existing_teamwork(sim_id)
+    # persist a nested dict of responses
+    if "teamwork_responses" not in st.session_state:
+        st.session_state.teamwork_responses = {team: {} for team in teams}
+    resp = st.session_state.teamwork_responses
 
-    if existing and "teamwork_edit_mode" not in st.session_state:
-        st.success("An assessment already exists for this simulation.")
-        with st.expander("View Existing Assessment", expanded=True):
-            st.write(f"**Leadership:** {existing['leadership']}")
-            st.write(f"**Teamwork:** {existing['teamwork']}")
-            st.write(f"**Task Mgmt:** {existing['task_management']}")
-            st.write(f"**Overall:** {existing['overall_performance']}")
-            st.write(f"**Total:** {existing['total']}")
-            if existing.get("comments"):
-                st.write(f"**Comments:** {existing['comments']}")
-        # If you want to allow editing, add a button:
-        if st.button("Edit Assessment"):
-            st.session_state.teamwork_edit_mode = True
-            st.rerun()
-        if st.button("Go to Results"):
+    existing_rows = (
+        supabase
+        .from_("teamwork")
+        .select("team")
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or []
+    )
+    teams_done = {row["team"] for row in existing_rows}
+
+    # 3) Se já tiver as 3, bloqueie o form
+    if teams_done == set(teams):
+        st.success("✅ As 3 avaliações TEAM já foram submetidas.")
+        if st.button("Ver Resultados"):
             nav_to("certify_and_results")
         return
 
-    # ---- Form State (persist across reruns) ----
+    # 4) Estado para armazenar respostas
     if "teamwork_responses" not in st.session_state:
-        st.session_state.teamwork_responses = {}
+        st.session_state.teamwork_responses = {team: {} for team in teams}
+    resp = st.session_state.teamwork_responses
 
-    resp: Dict[str, str] = st.session_state.teamwork_responses
 
     likert_options = [
         "Please select an option",
@@ -1679,73 +1669,84 @@ def page_teamwork_survey():
         return int(choice.split('–')[0].strip())
 
     # --- Leadership ---
-    st.markdown("### 🧭 Leadership")
-    st.caption("If no leader emerges allocate ‘0’ to Q1 & Q2.")
-    resp['Q1'] = st.selectbox(
-        "1. The team leader let the team know what was expected through direction and command",
-        likert_options,
-        index=likert_options.index(resp.get('Q1', likert_options[0])) if resp.get('Q1') else 0,
-        key="TEAM_Q1"
-    )
-    resp['Q2'] = st.selectbox(
-        "2. The team leader maintained a global perspective (monitoring, delegation)",
-        likert_options,
-        index=likert_options.index(resp.get('Q2', likert_options[0])) if resp.get('Q2') else 0,
-        key="TEAM_Q2"
-    )
+    for team in teams:
+        st.markdown(f"## Assessment for **{team}**")
+        responses = resp[team]
 
-    # --- Teamwork ---
-    st.markdown("### 🤝 Teamwork")
-    teamwork_questions = {
-        3: "3. The team communicated effectively",
-        4: "4. The team worked together to complete tasks in a timely manner",
-        5: "5. The team acted with composure and control",
-        6: "6. The team morale was positive (support, confidence, spirit)",
-        7: "7. The team adapted to changing situations",
-        8: "8. The team monitored and reassessed the situation",
-        9: "9. The team anticipated potential actions (e.g. equipment/drugs ready)"
-    }
-    for i in range(3, 10):
-        resp[f'Q{i}'] = st.selectbox(
-            teamwork_questions[i],
+        # Leadership
+        st.markdown("### 🧭 Leadership")
+        responses['Q1'] = st.selectbox(
+            f"{team} – 1. The team leader let the team know what was expected…",
             likert_options,
-            index=likert_options.index(resp.get(f'Q{i}', likert_options[0])) if resp.get(f'Q{i}') else 0,
-            key=f"TEAM_Q{i}"
+            index=likert_options.index(responses.get('Q1', likert_options[0])),
+            key=f"{team}_Q1",
+        )
+        responses['Q2'] = st.selectbox(
+            f"{team} – 2. The team leader maintained a global perspective…",
+            likert_options,
+            index=likert_options.index(responses.get('Q2', likert_options[0])),
+            key=f"{team}_Q2",
         )
 
-    # --- Task Management ---
-    st.markdown("### 🛠️ Task Management")
-    resp['Q10'] = st.selectbox(
-        "10. The team prioritised tasks",
-        likert_options,
-        index=likert_options.index(resp.get('Q10', likert_options[0])) if resp.get('Q10') else 0,
-        key="TEAM_Q10"
-    )
-    resp['Q11'] = st.selectbox(
-        "11. The team followed approved standards/guidelines",
-        likert_options,
-        index=likert_options.index(resp.get('Q11', likert_options[0])) if resp.get('Q11') else 0,
-        key="TEAM_Q11"
-    )
+        # Teamwork (Q3–Q9)
+        st.markdown("### 🤝 Teamwork")
+        teamwork_qs = {
+            3: "3. The team communicated effectively",
+            4: "4. The team worked together to complete tasks…",
+            5: "5. The team acted with composure and control",
+            6: "6. The team morale was positive…",
+            7: "7. The team adapted to changing situations",
+            8: "8. The team monitored and reassessed the situation",
+            9: "9. The team anticipated potential actions"
+        }
+        for i in range(3, 10):
+            responses[f'Q{i}'] = st.selectbox(
+                f"{team} – {teamwork_qs[i]}",
+                likert_options,
+                index=likert_options.index(responses.get(f'Q{i}', likert_options[0])),
+                key=f"{team}_Q{i}",
+            )
 
-    # --- Overall ---
-    st.markdown("### 🌟 Overall Performance")
-    # Keep slider value persistent
-    default_overall = int(resp.get('Q12', 5)) if str(resp.get('Q12', '')).isdigit() else 5
-    overall_val = st.slider(
-        "12. Global rating of the team's performance (1–10)",
-        1, 10, default_overall, key="TEAM_Q12_SLIDER"
-    )
-    resp['Q12'] = str(overall_val)
+        # Task Management (Q10–Q11)
+        st.markdown("### 🛠️ Task Management")
+        responses['Q10'] = st.selectbox(
+            f"{team} – 10. The team prioritised tasks",
+            likert_options,
+            index=likert_options.index(responses.get('Q10', likert_options[0])),
+            key=f"{team}_Q10",
+        )
+        responses['Q11'] = st.selectbox(
+            f"{team} – 11. The team followed approved standards…",
+            likert_options,
+            index=likert_options.index(responses.get('Q11', likert_options[0])),
+            key=f"{team}_Q11",
+        )
 
-    comments_prev = resp.get("COMMENTS", "")
-    comments_val = st.text_area("📝 Comments (optional):", value=comments_prev, key="TEAM_COMMENTS", height=120)
-    resp["COMMENTS"] = comments_val
+        # Overall (Q12)
+        st.markdown("### 🌟 Overall Performance")
+        default_overall = int(responses.get('Q12', '5'))
+        overall_val = st.slider(
+            f"{team} – 12. Global rating of the team’s performance (1–10)",
+            1, 10, default_overall,
+            key=f"{team}_Q12_SLIDER",
+        )
+        responses['Q12'] = str(overall_val)
+
+        # Comments
+        responses["COMMENTS"] = st.text_area(
+            f"{team} – 📝 Comments (optional):",
+            value=responses.get("COMMENTS", ""),
+            key=f"{team}_COMMENTS",
+            height=100,
+        )
+
+        st.markdown("---")
+
 
     st.markdown("---")
     col_submit, col_reset, col_cancel = st.columns(3)
     with col_submit:
-        submit_clicked = st.button("✅ Submit Assessment")
+        submit_clicked = st.button("✅ Submit All Assessments")
     with col_reset:
         if st.button("↩️ Reset Form"):
             for k in list(resp.keys()):
@@ -1760,54 +1761,40 @@ def page_teamwork_survey():
             return
 
     if submit_clicked:
-        # Validate
-        missing = [f"Q{i}" for i in range(1, 12) if resp.get(f"Q{i}", likert_options[0]) == likert_options[0]]
+        missing = []
+        for team in teams:
+            r = resp[team]
+            missing += [f"{team} Q{i}" 
+                        for i in range(1,12) 
+                        if r.get(f"Q{i}", likert_options[0]) == likert_options[0]]
         if missing:
-            st.error("⚠️ Please answer all Likert questions (Q1–Q11) before submitting.")
+            st.error("⚠️ Please answer every question for each team before submitting:")
+            for m in missing: st.write("- " + m)
             return
 
-        try:
-            leadership = get_score(resp['Q1']) + get_score(resp['Q2'])
-            teamwork   = sum(get_score(resp[f'Q{i}']) for i in range(3, 10))
-            task       = get_score(resp['Q10']) + get_score(resp['Q11'])
-            overall    = int(resp['Q12'])
+        # 2) Build payloads and insert
+        for team in teams:
+            r = resp[team]
+            leadership = get_score(r['Q1']) + get_score(r['Q2'])
+            teamwork   = sum(get_score(r[f'Q{i}']) for i in range(3,10))
+            task       = get_score(r['Q10']) + get_score(r['Q11'])
+            overall    = int(r['Q12'])
             total      = leadership + teamwork + task + overall
-        except Exception as e:
-            st.error(f"Scoring error: {e}")
-            return
 
-        payload = {
-            "id_simulation":       sim_id,
-            "simulation_name":     sim_name,
-            "leadership":          leadership,
-            "teamwork":            teamwork,
-            "task_management":     task,
-            "overall_performance": overall,
-            "total":               total,
-            "comments":            resp.get("COMMENTS", "")
-        }
+            payload = {
+                "id_simulation":       sim_id,
+                "simulation_name":     sim_name,
+                "team":                team,
+                "leadership":          leadership,
+                "teamwork":            teamwork,
+                "task_management":     task,
+                "overall_performance": overall,
+                "total":               total,
+                "comments":            r.get("COMMENTS", "")
+            }
+            supabase.from_("teamwork").insert(payload).execute()
 
-        try:
-            if existing:
-                # Update (edit mode)
-                (supabase
-                 .from_("teamwork")
-                 .update(payload)
-                 .eq("id_simulation", sim_id)
-                 .execute())
-                st.success("✅ TEAM assessment updated.")
-            else:
-                (supabase
-                 .from_("teamwork")
-                 .insert(payload)
-                 .execute())
-                st.success("✅ TEAM assessment saved.")
-        except Exception as e:
-            st.error(f"❌ Failed to persist assessment: {e}")
-            return
-
-        # Clear edit mode & navigate
-        st.session_state.pop("teamwork_edit_mode", None)
+        st.success("✅ All three TEAM assessments submitted!")
         nav_to("certify_and_results")
 
         
