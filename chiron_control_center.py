@@ -1170,7 +1170,7 @@ def page_live_dashboard():
     roster = {p["participant_role"]: p["id"] for p in participants_cache if p.get("participant_role")}
 
     EXPECTED_ROLES = [
-        "FE-3 (EVA2)", "Commander (CMO, IV2)", "FE-1 (EVA1)", "FE-2 (IV1)",
+        "FE-3 (EVA2)", "Commander (CMO,IV2)", "FE-1 (EVA1)", "FE-2 (IV1)",
         "FD", "FS", "BME", "CAPCOM",
     ]
 
