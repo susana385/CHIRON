@@ -524,6 +524,22 @@ def page_create_new_simulation():
 def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
     # 1) load participants
+    sim_meta = (
+        supabase
+        .from_("simulation")
+        .select("participants_logged, roles_logged")
+        .eq("id", sim_id)
+        .single()
+        .execute()
+        .data or {}
+    )
+    joined = sim_meta.get("participants_logged", [])
+    st.markdown("**Participants in lobby:**")
+    for u in joined:
+        st.write("• " + u)
+
+    st.markdown("---")
+
     parts = supabase.from_("participant") \
                     .select("id, id_profile, participant_role") \
                     .eq("id_simulation", sim_id) \
@@ -556,12 +572,16 @@ def roles_claimed_supervisor():
                     .eq("id", pid).execute()
             if role:
                 new_roles.append(role)
-        # update simulation row
+        # update simulation row: both roles_logged and participants_logged
         supabase.from_("simulation") \
-                .update({"roles_logged": new_roles}) \
-                .eq("id", sim_id).execute()
+                .update({
+                    "roles_logged":        new_roles,
+                    "participants_logged": joined
+                }) \
+                .eq("id", sim_id) \
+                .execute()
         st.success("Roles updated.")
-        st.experimental_rerun()
+        st.rerun()
 
     # 5) start button enabled only when len(parts)==8 and none are blank
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
@@ -712,6 +732,29 @@ def participant_new_simulation():
         st.session_state.loaded_35to43          = False
         st.session_state.simulation_id      = sim["id"]
         st.session_state.simulation_name    = sim["name"]
+        my_username = st.session_state.profile["username"]
+
+        # 1) fetch current list
+        resp = (
+            supabase
+            .from_("simulation")
+            .select("participants_logged")
+            .eq("id", sim["id"])
+            .single()
+            .execute()
+        )
+        current = resp.data.get("participants_logged") or []
+
+        # 2) append if missing
+        if my_username not in current:
+            current.append(my_username)
+            supabase.from_("simulation") \
+                .update({"participants_logged": current}) \
+                .eq("id", sim["id"]) \
+                .execute()
+
+        # ────────────────────────────────────────────────────────────────
+
         nav_to("dm_role_claim")
 
 MAX_ROLES = 8
@@ -737,7 +780,7 @@ def _load_sim_and_participants(sim_id: str):
 
 
 def page_dm_role_claim():
-    
+
     st.header("Claim Your Role")
 
     sim_id  = st.session_state.simulation_id
