@@ -523,9 +523,10 @@ def page_create_new_simulation():
 
 def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
+    st.subheader("Assign Roles to Participants")
     st_autorefresh(interval=3_000, key="assing")
     # 1) load participants
-    st.subheader("Assign Roles to Participants")
+
     sim_meta = (
         supabase
         .from_("simulation")
@@ -555,6 +556,7 @@ def roles_claimed_supervisor():
                        .execute().data or []
     username_map = {prof["id"]: prof["username"] for prof in profiles}
 
+
     with st.form("assign_roles"):
         assignments = {}
         for p in parts:
@@ -566,34 +568,30 @@ def roles_claimed_supervisor():
         submitted = st.form_submit_button("Save Assignments")
 
     if submitted:
-        # 1) update each participant row, collect newly assigned usernames
-        newly_assigned = []
+        new_roles = []
         for pid, role in assignments.items():
-            # find their username
-            uname = username_map[
-                next(p["id_profile"] for p in parts if p["id"] == pid)
-            ]
-            # write the role
             supabase.from_("participant") \
-               .update({"participant_role": role}) \
-                .eq("id", pid) \
-                .execute()
+                    .update({"participant_role": role}) \
+                    .eq("id", pid).execute()
             if role:
-                newly_assigned.append(uname)
-
-        # 2) build updated lists for the simulation row
-        updated_roles   = [ assignments[pid] for pid in assignments if assignments[pid] ]
-        # remove any user who just got a role from the lobby
-        updated_joined  = [u for u in joined if u not in newly_assigned]
-
-        # 3) write both arrays back
-        supabase.from_("simulation") \
-            .update({
-                "roles_logged":        updated_roles,
-                "participants_logged": updated_joined
-            }) \
-            .eq("id", sim_id) \
-            .execute()
+                new_roles.append(role)
+        # update simulation row: both roles_logged and participants_logged
+        try:
+            resp = (
+                supabase
+                .from_("simulation")
+                .update({
+                    "roles_logged":        new_roles,
+                    "participants_logged": joined
+                })
+                .eq("id", sim_id)
+                .execute()
+            )
+        except APIError as e:
+            err = e.args[0]
+            st.error("❌ Failed to save assignments: " + err.get("message", str(err)))
+            st.write(err)
+            return
         st.success("Roles updated.")
         st.rerun()
 
