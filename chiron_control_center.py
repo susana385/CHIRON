@@ -525,6 +525,7 @@ def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
     st_autorefresh(interval=3_000, key="assing")
     # 1) load participants
+    st.subheader("Assign Roles to Participants")
     sim_meta = (
         supabase
         .from_("simulation")
@@ -554,7 +555,6 @@ def roles_claimed_supervisor():
                        .execute().data or []
     username_map = {prof["id"]: prof["username"] for prof in profiles}
 
-    st.subheader("Assign Roles to Participants")
     with st.form("assign_roles"):
         assignments = {}
         for p in parts:
