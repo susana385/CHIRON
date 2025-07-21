@@ -24,7 +24,7 @@ from reportlab.lib.colors import HexColor
 from reportlab.platypus import Table as RLTable
 from reportlab.platypus import Image as RLImage
 from typing import Dict
-import time
+import time, random
 
 
 st.set_page_config(
@@ -2505,26 +2505,51 @@ def page_individual_results():
 
 
 
+def safe_query(callable_fn, retries: int = 2, base_delay: float = 0.15):
+    """
+    Retry transient DB (or HTTP) errors like Errno 11 “Resource temporarily unavailable”.
+    - callable_fn: a zero‑arg function that does your supabase.from(...).select(...).execute()
+    - retries: how many times to retry before giving up
+    - base_delay: initial backoff (in seconds); doubles each retry, plus a bit of jitter
+    """
+    last_exc = None
+    for attempt in range(retries + 1):
+        try:
+            return callable_fn()
+        except Exception as e:
+            last_exc = e
+            # If it’s our “busy” error, retry; otherwise bubble up immediately
+            msg = str(e)
+            if ("Resource temporarily unavailable" not in msg
+                and "Errno 11" not in msg) or attempt == retries:
+                raise
+            # exponential backoff with jitter
+            delay = base_delay * (2 ** attempt) + random.uniform(0, 0.05)
+            time.sleep(delay)
+    # if we somehow exit loop, re‑raise the last exception
+    raise last_exc
+
+
+def fetch_simulations_with_retry():
+    return safe_query(lambda: supabase
+                      .from_("simulation")
+                      .select("*")
+                      .execute())
+
+
 def page_running_simulations():
     st.header("🏃 Ongoing Simulations")
     if st.button("Go back to the Main Menu"):
         nav_to("welcome")
         return
 
-    # 1) Fetch running sims
-    try:
-        resp = (
-            supabase
-            .from_("simulation")
-            .select("id, name, started_at, roles_logged")
-            .eq("status", "running")
-            .order("started_at", desc=True)
-            .execute()
-        )
-        sims = resp.data or []
-    except Exception as e:
-        st.error(f"❌ Could not load ongoing simulations: {e}")
-        return
+    with st.spinner("Loading simulation…"):
+        try:
+            resp = fetch_simulations_with_retry()
+        except Exception:
+            st.info("Still loading… please wait a moment.")
+            return
+    sims = resp.data or []
 
     if not sims:
         st.info("No simulations currently running.")
