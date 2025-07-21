@@ -523,8 +523,8 @@ def page_create_new_simulation():
 
 def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
-    st_autorefresh(interval=3_000, key="assing")
-    # 1) load participants
+
+    # 0) Pull in the current participants in the lobby (usernames) and existing roles_logged
     sim_meta = (
         supabase
         .from_("simulation")
@@ -538,20 +538,28 @@ def roles_claimed_supervisor():
     st.markdown("**Participants in lobby:**")
     for u in joined:
         st.write("• " + u)
-
     st.markdown("---")
 
-    parts = supabase.from_("participant") \
-                    .select("id, id_profile, participant_role") \
-                    .eq("id_simulation", sim_id) \
-                    .execute().data or []
+    # 1) Load the raw participant rows (so we can update them)
+    parts = (
+        supabase
+        .from_("participant")
+        .select("id, id_profile, participant_role")
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or []
+    )
 
-    # 2) load their usernames
+    # 2) Build a map of profile_id → username
     profile_ids = [p["id_profile"] for p in parts]
-    profiles = supabase.from_("profiles") \
-                       .select("id, username") \
-                       .in_("id", profile_ids) \
-                       .execute().data or []
+    profiles = (
+        supabase
+        .from_("profiles")
+        .select("id, username")
+        .in_("id", profile_ids)
+        .execute()
+        .data or []
+    )
     username_map = {prof["id"]: prof["username"] for prof in profiles}
 
     st.subheader("Assign Roles to Participants")
@@ -560,52 +568,44 @@ def roles_claimed_supervisor():
         for p in parts:
             uname = username_map.get(p["id_profile"], f"#{p['id_profile']}")
             current = p.get("participant_role") or ""
-            options = [""] + ALL_ROLES  # "" → Unassigned
+            options = [""] + ALL_ROLES
             idx = options.index(current) if current in options else 0
-            assignments[p["id"]] = st.selectbox(f"{uname}", options, index=idx, key=f"role_{p['id']}")
+            assignments[p["id"]] = st.selectbox(uname, options, index=idx, key=f"role_{p['id']}")
         submitted = st.form_submit_button("Save Assignments")
 
     if submitted:
+        # 3) Write each participant's selected role back into participant.participant_role
         for pid, role in assignments.items():
             supabase.from_("participant") \
                 .update({"participant_role": role or None}) \
                 .eq("id", pid) \
                 .execute()
 
-        # 2) Re-build the arrays you’ll persist to simulation
+        # 4) Build the new_roles list from your assignments dict
         new_roles = [role for role in assignments.values() if role]
-        joined    = sim_meta.get("participants_logged", [])
 
-        try:
-            resp = (
-                supabase
-                .from_("simulation")
-                .update({
-                    "roles_logged":        new_roles,
-                    "participants_logged": joined
-                })
-                .eq("id", sim_id)
-                .execute()
-            )
-        except APIError as e:
-            err = e.args[0]
-            st.error("❌ Failed to save assignments: " + err.get("message", str(err)))
-            st.write(err)
-            return
+        # 5) Push that into simulation.roles_logged
+        supabase.from_("simulation") \
+            .update({"roles_logged": new_roles}) \
+            .eq("id", sim_id) \
+            .execute()
+
+        # 6) Rerun the page so sim_meta (and parts) get re‑loaded with the updated array
         st.success("Roles updated.")
-        st.rerun()
+        st.experimental_rerun()
 
-    # 5) start button enabled only when len(parts)==8 and none are blank
+    # 7) Only enable “Start Simulation” when all 8 roles are set
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
         if st.button("▶️ Start Simulation"):
             supabase.from_("simulation") \
                     .update({
-                        "status": "running",
+                        "status":     "running",
                         "started_at": datetime.now(timezone.utc).isoformat()
                     }).eq("id", sim_id).execute()
             nav_to("menu_iniciar_simulação_supervisor")
     else:
         st.info(f"{len(parts)} joined; fill all roles to start.")
+
 
 
 def page_supervisor_menu():
