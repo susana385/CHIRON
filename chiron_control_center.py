@@ -521,7 +521,7 @@ def roles_claimed_supervisor():
         load_sim_roles.clear()
         st.rerun()
     
-    can_start = (len(roles_logged) == 8 and status == "pending")
+    can_start = (len(roles_logged) == 8)
     if st.button("▶️ Start Simulation", disabled=not can_start):
         # Use a proper timestamp; let backend set started_at via RPC or now in Python:
         from datetime import datetime, timezone
