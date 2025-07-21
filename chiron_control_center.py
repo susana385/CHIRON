@@ -1088,7 +1088,7 @@ def render_participant_live(pid: int, sim_id: int):
         if my_done:
             st.info(f"You marked DONE. Waiting others… ({cnt}/8)")
         else:
-            st.warning("You have not advanced this inject yet (use questionnaire view).")
+            st.warning("The participant hasn't clicked next yet.")
         return
 
     # Regular decision
