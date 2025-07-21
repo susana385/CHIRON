@@ -566,30 +566,34 @@ def roles_claimed_supervisor():
         submitted = st.form_submit_button("Save Assignments")
 
     if submitted:
-        new_roles = []
+        # 1) update each participant row, collect newly assigned usernames
+        newly_assigned = []
         for pid, role in assignments.items():
+            # find their username
+            uname = username_map[
+                next(p["id_profile"] for p in parts if p["id"] == pid)
+            ]
+            # write the role
             supabase.from_("participant") \
-                    .update({"participant_role": role}) \
-                    .eq("id", pid).execute()
-            if role:
-                new_roles.append(role)
-        # update simulation row: both roles_logged and participants_logged
-        try:
-            resp = (
-                supabase
-                .from_("simulation")
-                .update({
-                    "roles_logged":        new_roles,
-                    "participants_logged": joined
-                })
-                .eq("id", sim_id)
+               .update({"participant_role": role}) \
+                .eq("id", pid) \
                 .execute()
-            )
-        except APIError as e:
-            err = e.args[0]
-            st.error("❌ Failed to save assignments: " + err.get("message", str(err)))
-            st.write(err)
-            return
+            if role:
+                newly_assigned.append(uname)
+
+        # 2) build updated lists for the simulation row
+        updated_roles   = [ assignments[pid] for pid in assignments if assignments[pid] ]
+        # remove any user who just got a role from the lobby
+        updated_joined  = [u for u in joined if u not in newly_assigned]
+
+        # 3) write both arrays back
+        supabase.from_("simulation") \
+            .update({
+                "roles_logged":        updated_roles,
+                "participants_logged": updated_joined
+            }) \
+            .eq("id", sim_id) \
+            .execute()
         st.success("Roles updated.")
         st.rerun()
 
