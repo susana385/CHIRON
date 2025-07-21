@@ -277,46 +277,52 @@ def page_login():
                         and signup_password 
                         and role_code.strip()):
                     st.error("All fields are required to register.")
-                else:
-                    code = int(role_code)
-                    role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
-                    if code not in role_map:
-                        st.error("Invalid profile type code.")
-                    else:
-                        try:
-                            auth_res = auth.sign_up({
-                                "email":    signup_email,
-                                "password": signup_password
-                            })
-                            st.write(auth_res.user.id)
-                        except Exception as e:
-                            st.error(f"Sign‑up failed: {e}")
-                        else:
-                            try:
-                                sup_res = (
-                                    supabase
-                                    .from_("profiles")
-                                    .insert({
-                                        "id":                auth_res.user.id,
-                                        "username":          signup_user,
-                                        "email":             signup_email,
-                                        "role":              role_map[code],
-                                        "profile_type_code": code
-                                    })
-                                    .execute()
-                                )
-                                if sup_res.error:
-                                    st.error(f"Insert failed: {sup_res.error.message}")
-                                    return
-                            except APIError as e:
-                                # e.args[0] _might_ be a dict, or just a string—handle both
-                                payload = e.args[0]
-                                st.write("🔍 Full error payload:", payload)
-                                if isinstance(payload, dict) and "message" in payload:
-                                    st.error("❌ Database error: " + payload["message"])
-                                else:
-                                    st.error("❌ Database error: " + str(payload))
-                                return
+                    return
+
+                # 2) Profile‐type code check
+                code     = int(role_code)
+                role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
+                if code not in role_map:
+                    st.error("Invalid profile type code.")
+                    return
+
+                # 3) Create the Auth user
+                try:
+                    auth_res = auth.sign_up({
+                        "email":    signup_email,
+                        "password": signup_password
+                    })
+                except Exception as e:
+                    st.error(f"Sign‑up failed: {e}")
+                    return
+
+                # 4) Insert into profiles
+                try:
+                    sup_res = (
+                        supabase
+                        .from_("profiles")
+                        .insert({
+                            "id":                auth_res.user.id,
+                            "username":          signup_user,
+                            "email":             signup_email,
+                            "role":              role_map[code],
+                            "profile_type_code": code
+                        })
+                        .execute()
+                    )
+                except APIError as e:
+                    st.error("❌ Database insert raised an APIError: " + str(e))
+                    return
+
+                # 5) Verify the insert really happened
+                if sup_res.status_code != 201 or not sup_res.data:
+                    st.error(f"❌ Failed to create profile (status {sup_res.status_code})")
+                    return
+
+                # 6) Success! Tell the user and maybe auto‐navigate back to login
+                st.success("✅ Registered! Please confirm your email, then use the Log In form above.")
+                # Optionally hide the signup form:
+                st.session_state.show_signup = False
         with col2:
             if st.button("Cancel"):
                 st.session_state.show_signup = False
