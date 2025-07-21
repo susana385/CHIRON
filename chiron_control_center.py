@@ -310,15 +310,15 @@ def page_login():
                     })
                     .execute()
                     )
-                st.write("🔍 sup_res repr:", sup_res)
-                try:
-                    st.write("🔍 sup_res.__dict__:", sup_res.__dict__)
-                except:
-                    pass
-                try:
-                    st.write("🔍 dir(sup_res):", dir(sup_res))
-                except:
-                    pass
+                # st.write("🔍 sup_res repr:", sup_res)
+                # try:
+                #     st.write("🔍 sup_res.__dict__:", sup_res.__dict__)
+                # except:
+                #     pass
+                # try:
+                #     st.write("🔍 dir(sup_res):", dir(sup_res))
+                # except:
+                #     pass
                 
 
                 # 5) Verify the insert really happened
