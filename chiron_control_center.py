@@ -1873,14 +1873,21 @@ def page_certify_and_results():
     st.markdown(f"**Simulation:** `{sim_name}` (id={sim_id})")
 
     # --- Load TEAM Assessment ---
-    teamwork_rows = (
-        supabase
-        .from_("teamwork")
-        .select("team, leadership, teamwork, task_management, overall_performance, total, comments")
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or []
-    )
+    try:
+        res = (
+            supabase
+            .from_("teamwork")
+            .select("team, leadership, teamwork, task_management, overall_performance, total, comments")
+            .eq("id_simulation", sim_id)
+            .execute()
+        )
+        st.write("🔍 teamwork select response:", res.__dict__)
+        teamwork_rows = res.data or []
+    except APIError as e:
+        err = e.args[0]
+        st.error("❌ Could not fetch TEAM assessments:")
+        st.write(err)
+        return
     if len(teamwork_rows) < 3:
         st.warning(f"🔒 Only {len(teamwork_rows)}/3 TEAM assessments submitted. Please complete all three before certification.")
         if st.button("Go to TEAM Form"):
@@ -1911,15 +1918,22 @@ def page_certify_and_results():
         st.write(f"- Total: **{avg('total')}**")
 
     # --- Load Simulation Status ---
-    sim_meta = (
-        supabase
-        .from_("simulation")
-        .select("status, certified_at")
-        .eq("id", sim_id)
-        .single()
-        .execute()
-        .data or {}
-    )
+    try:
+        res = (
+            supabase
+            .from_("simulation")
+            .select("status, certified_at")
+            .eq("id", sim_id)
+            .single()
+            .execute()
+        )
+        st.write("🔍 simulation select response:", res.__dict__)
+        sim_meta = res.data or {}
+    except APIError as e:
+        err = e.args[0]
+        st.error("❌ Could not read simulation meta:")
+        st.write(err)
+        return
     status       = sim_meta.get("status")
     certified_at = sim_meta.get("certified_at")
 
@@ -1951,7 +1965,7 @@ def page_certify_and_results():
             st.session_state.simulation_certified = True
             st.success("✅ Simulation certified.")
             # Reload so we pick up certified_at
-            st.experimental_rerun()
+            st.rerun()
             return
 
     # ─── 4) Once certified, show the results button ────────────────────────
