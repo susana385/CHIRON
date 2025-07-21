@@ -2550,6 +2550,12 @@ def page_running_simulations():
             st.info("Still loading… please wait a moment.")
             return
     sims = resp.data or []
+    sims = [s for s in sims if s.get("status") == "running"]
+    sims = sorted(
+        sims,
+        key=lambda s: s.get("started_at") or "",
+        reverse=True
+    )
 
     if not sims:
         st.info("No simulations currently running.")
