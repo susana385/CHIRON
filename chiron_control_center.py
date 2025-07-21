@@ -576,10 +576,19 @@ def roles_claimed_supervisor():
     if submitted:
         # 3) Write each participant's selected role back into participant.participant_role
         for pid, role in assignments.items():
-            supabase.from_("participant") \
-                .update({"participant_role": role or None}) \
-                .eq("id", pid) \
-                .execute()
+            try:
+                resp = (
+                    supabase
+                    .from_("participant")
+                    .update({"participant_role": role or None})
+                    .eq("id", pid)
+                    .execute()
+                )
+                # debug:
+                st.write(f"Update pid={pid} →", resp.__dict__)
+            except APIError as e:
+                st.error(f"Failed to update participant {pid}: {e.args[0]['message']}")
+                return
 
         # 4) Build the new_roles list from your assignments dict
         new_roles = [role for role in assignments.values() if role]
