@@ -297,22 +297,29 @@ def page_login():
                     return
 
                 # 4) Insert into profiles
-                try:
-                    sup_res = (
-                        supabase
-                        .from_("profiles")
-                        .insert({
-                            "id":                auth_res.user.id,
-                            "username":          signup_user,
-                            "email":             signup_email,
-                            "role":              role_map[code],
-                            "profile_type_code": code
-                        })
-                        .execute()
+                
+                sup_res = (
+                    supabase
+                    .from_("profiles")
+                    .insert({
+                        "id":                auth_res.user.id,
+                        "username":          signup_user,
+                        "email":             signup_email,
+                        "role":              role_map[code],
+                        "profile_type_code": code
+                    })
+                    .execute()
                     )
-                except APIError as e:
-                    st.error("❌ Database insert raised an APIError: " + str(e))
-                    return
+                st.write("🔍 sup_res repr:", sup_res)
+                try:
+                    st.write("🔍 sup_res.__dict__:", sup_res.__dict__)
+                except:
+                    pass
+                try:
+                    st.write("🔍 dir(sup_res):", dir(sup_res))
+                except:
+                    pass
+                
 
                 # 5) Verify the insert really happened
                 if sup_res.status_code != 201 or not sup_res.data:
