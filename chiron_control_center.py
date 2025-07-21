@@ -510,7 +510,7 @@ def roles_claimed_supervisor():
     if not roles_logged:
         st.write("_None yet_")
     else:
-        missing = [r for r in ("FD","CMO","IV1","IV2","FS","EV1","EV2","CAPCOM")
+        missing = [r for r in ("FD","FS","CAPCOM")
                    if r not in roles_logged]
         st.markdown("**Current:** " + ", ".join(roles_logged))
         if missing:
