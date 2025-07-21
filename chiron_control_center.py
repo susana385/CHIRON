@@ -585,14 +585,25 @@ def roles_claimed_supervisor():
         new_roles = [role for role in assignments.values() if role]
 
         # 5) Push that into simulation.roles_logged
-        supabase.from_("simulation") \
-            .update({"roles_logged": new_roles}) \
-            .eq("id", sim_id) \
-            .execute()
+        try:
+            resp = (
+                supabase
+                .from_("simulation")
+                .update({"roles_logged": new_roles})
+                .eq("id", sim_id)
+                .execute()
+            )
+            # Optionally inspect resp:
+            # st.write("🔍 simulation update response:", resp.__dict__)
+        except APIError as e:
+            payload = e.args[0]
+            st.error("❌ Could not update simulation.roles_logged:")
+            st.write(payload)
+            return
 
         # 6) Rerun the page so sim_meta (and parts) get re‑loaded with the updated array
         st.success("Roles updated.")
-        st.experimental_rerun()
+        st.rerun()
 
     # 7) Only enable “Start Simulation” when all 8 roles are set
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
