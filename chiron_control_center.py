@@ -802,6 +802,11 @@ def participant_new_simulation():
             st.error("❌ Could not join simulation:")
             st.write(err)           # show full dict (code, message, hint, detail)
             return
+        
+        # grab the newly‑inserted participant row
+        new_participant = resp.data[0]
+        st.session_state.participant_id = new_participant["id"]
+
 
         # ────────────────────────────────────────────────────────────────
 
@@ -884,6 +889,10 @@ def page_dm_role_claim():
     # 7) Only let them start once everyone has a role
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
         if st.button("▶️ Start Simulation"):
+            me = next(p for p in parts if p["id_profile"] == st.session_state.user.id)
+            # store the id and role so the next page has context
+            st.session_state.participant_id = me["id"]
+            st.session_state.dm_role        = me["participant_role"]
             nav_to("dm_questionnaire")
     else:
         st.info(f"Waiting until all {len(parts)} participants have roles…")
