@@ -191,21 +191,14 @@ def page_login():
 
     st.title("Welcome to CHIRON System")
     st.write("""
-    CCHIRON towards the future of Deep-Space Medical Decision-Making!
+    CHIRON towards the future of Deep-Space Medical Decision-Making!
     """)
 
-    st.header("Login or Sign Up")
-    login_id      = st.text_input("Username or Email")
-    password      = st.text_input("Password", type="password")
-
-    # only for sign-up:
-    signup_user   = st.text_input("New Username", value="")
-    signup_email  = st.text_input("New Email", value="")
-    role_code     = st.text_input("Profile type code (only for Sign Up)", value="")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Log In"):
+    st.header("Login")
+    login_id = st.text_input("Username or Email", key="login_id")
+    password = st.text_input("Password", type="password", key="login_password")
+    
+    if st.button("Log In"):
             if not login_id or not password:
                 st.error("Please enter username/email and password.")
                 return
@@ -256,43 +249,66 @@ def page_login():
             st.session_state.participants_cache = []
             st.session_state.last_snapshot_ts   = 0.0
             nav_to("welcome")
-                    
+    
+    if "show_signup" not in st.session_state:
+        st.session_state.show_signup = False
 
-    with col2:
-        if st.button("Sign Up"):
-            # apenas no sign-up é obrigatório preencher o código
-            if not signup_user.strip() or not signup_email.strip() or not password or not role_code.strip():
-                st.error("Username, email, password and profile type code are all required.")
-                return
-            code = int(role_code)
-            role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
-            if code not in role_map:
-                st.error("Invalid code.")
-            else:
-                try:
-                    auth_res = auth.sign_up({"email": signup_email, "password": password})
-                except Exception as e:
-                    st.error(f"Sign-up failed: {e}")
+    if not st.session_state.show_signup:
+        if st.button("Don’t have an account yet? Register here"):
+            st.session_state.show_signup = True
+    
+    if st.session_state.show_signup:
+        st.markdown("---")
+        st.header("Sign Up")
+
+        signup_user  = st.text_input("Choose a Username", key="signup_user")
+        signup_email = st.text_input("Your Email", key="signup_email")
+        signup_pass  = st.text_input("Choose a Password", type="password", key="signup_password")
+        role_code    = st.text_input("Profile type code", key="signup_code")
+
+        col1, col2 = st.columns([1,3])
+        with col1:
+            if st.button("Register"):
+                # apenas no sign-up é obrigatório preencher o código
+                if not signup_user.strip() or not signup_email.strip() or not password or not role_code.strip():
+                    st.error("Username, email, password and profile type code are all required.")
+                    return
+                code = int(role_code)
+                role_map = {140:"administrator", 198:"supervisor", 220:"participant"}
+                if code not in role_map:
+                    st.error("Invalid code.")
                 else:
                     try:
-                        sup_res = supabase\
-                            .from_("profiles")\
-                            .insert({
-                                "id":                auth_res.user.id,
-                                "username":          signup_user,
-                                "email":             signup_email,
-                                "role":              role_map[code],
-                                "profile_type_code": code
-                            })\
-                        .execute()
+                        auth_res = auth.sign_up({"email": signup_email, "password": password})
                     except Exception as e:
-                        st.error(f"Could not create profile row: {e}")
+                        st.error(f"Sign-up failed: {e}")
                     else:
-                                # success if sup_res.data is non-empty
-                        if sup_res.data:
-                            st.success("✅ Registered! Please confirm your email then Sign In.")
+                        try:
+                            sup_res = supabase\
+                                .from_("profiles")\
+                                .insert({
+                                    "id":                auth_res.user.id,
+                                    "username":          signup_user,
+                                    "email":             signup_email,
+                                    "role":              role_map[code],
+                                    "profile_type_code": code
+                                })\
+                            .execute()
+                        except Exception as e:
+                            st.error(f"Could not create profile row: {e}")
                         else:
-                            st.error("❌ Profile insert returned no data!")
+                                    # success if sup_res.data is non-empty
+                            if sup_res.data:
+                                st.success("✅ Registered! Please confirm your email then Sign In.")
+                            else:
+                                st.error("❌ Profile insert returned no data!")
+        with col2:
+            if st.button("Cancel"):
+                st.session_state.show_signup = False
+                # clear the signup fields if you want:
+                for k in ("signup_user","signup_email","signup_password","signup_code"):
+                    st.session_state.pop(k, None)
+
 # ------------------------------------------------------- Other functions -----------------------------------------------
 
 # teste de conexão
