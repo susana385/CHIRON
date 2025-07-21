@@ -611,8 +611,8 @@ def roles_claimed_supervisor():
             return
 
         # 6) Rerun the page so sim_meta (and parts) get re‑loaded with the updated array
-        st.success("Roles updated.")
-        st.rerun()
+        #st.success("Roles updated.")
+        #st.rerun()
 
     # 7) Only enable “Start Simulation” when all 8 roles are set
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
