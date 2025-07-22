@@ -1227,7 +1227,7 @@ def page_live_dashboard():
             nav_to("welcome")
 
     with col3:
-        if st.button("🔄 Hard Refresh", key="refresh_force"):
+        if st.button("🔄 Refresh", key="refresh_force"):
             fetch_snapshot.clear()
             sync_simulation_state(sim_id)
             st.rerun()
