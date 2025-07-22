@@ -1215,6 +1215,8 @@ def page_live_dashboard():
     # build_answer_index() only if you actually use it for cross lookups here
     # answer_idx = build_answer_index()
 
+    st.header(f"🚀 Decision Suport Dashboard: {sim_name}")
+
     # Optional: manual hard refresh (bust ttl)
     col1, col2, col3 = st.columns([3, 3, 1])
 
