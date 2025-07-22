@@ -2138,58 +2138,81 @@ def page_team_results():
 
     # --- TEAM (supervisor) assessment ---
     @st.cache_data(ttl=10)
-    def fetch_teamwork(sim_id_):
+    def fetch_teamwork_all(sim_id_: int):
         try:
             res = (supabase
-                   .from_("teamwork")
-                   .select("leadership, teamwork, task_management, overall_performance, total, comments, created_at")
-                   .eq("id_simulation", sim_id_)
-                   .maybe_single()
-                   .execute())
-            return res.data
+                .from_("teamwork")
+                .select("team, leadership, teamwork, task_management, overall_performance, total, comments, created_at")
+                .eq("id_simulation", sim_id_)
+                .execute())
+            return res.data or []
         except Exception:
-            return None
+            return []
 
-    tw_row = fetch_teamwork(sim_id)
-    if tw_row:
-        st.subheader("🔹 Supervisor’s TEAM Assessment")
-        tw_labels  = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
-        tw_cols    = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
-        tw_values  = [tw_row[c] for c in tw_cols]
-        tw_maxes   = [8, 28, 8, 10, 54]  # domain maxima
-
-        x = np.arange(len(tw_labels))
-        width = 0.35
-        fig, ax = plt.subplots(figsize=(6, 3))
-        ax.bar(x - width/2, tw_values, width, label="Score")
-        ax.bar(x + width/2, tw_maxes,  width, label="Max")
-        ax.set_xticks(x)
-        ax.set_xticklabels(tw_labels, rotation=0)
-        ax.set_ylabel("Points")
-        ax.set_title("TEAM Scores vs Max")
-        ax.legend()
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-
-        with st.expander("TEAM Details"):
-            st.write(f"- Leadership: **{tw_row['leadership']}** / 8")
-            st.write(f"- Teamwork: **{tw_row['teamwork']}** / 28")
-            st.write(f"- Task Mgmt: **{tw_row['task_management']}** / 8")
-            st.write(f"- Overall: **{tw_row['overall_performance']}** / 10")
-            st.write(f"- Total: **{tw_row['total']}** / 54")
-            if tw_row.get("comments"):
-                st.write(f"_Comments:_ {tw_row['comments']}")
-
+    tw_rows = fetch_teamwork_all(sim_id)
+    if not tw_rows:
+        st.info("No TEAM assessments found.")
     else:
-        st.info("No TEAM assessment found.")
+        st.subheader("🔹 TEAM Assessments (by crew)")
 
-    st.markdown("---")
+        # bar chart per row
+        TW_LABELS = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
+        TW_KEYS   = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
+        TW_MAXES  = [8, 28, 8, 10, 54]
+
+        for row in tw_rows:
+            st.markdown(f"### {row['team']}")
+            values = [row[k] for k in TW_KEYS]
+
+            x = np.arange(len(TW_LABELS))
+            width = 0.35
+            fig, ax = plt.subplots(figsize=(6, 3))
+            ax.bar(x - width/2, values, width, label="Score")
+            ax.bar(x + width/2, TW_MAXES, width, label="Max")
+            ax.set_xticks(x)
+            ax.set_xticklabels(TW_LABELS)
+            ax.set_ylabel("Points")
+            ax.set_title(f"TEAM Scores vs Max – {row['team']}")
+            ax.legend()
+            fig.tight_layout()
+            st.pyplot(fig, use_container_width=True)
+
+            with st.expander("Details"):
+                st.write(f"- Leadership: **{row['leadership']}** / 8")
+                st.write(f"- Teamwork: **{row['teamwork']}** / 28")
+                st.write(f"- Task Mgmt: **{row['task_management']}** / 8")
+                st.write(f"- Overall: **{row['overall_performance']}** / 10")
+                st.write(f"- Total: **{row['total']}** / 54")
+                if row.get("comments"):
+                    st.write(f"_Comments:_ {row['comments']}")
+            st.markdown("---")
+        if len(tw_rows) >= 2:
+            avg_vals = [
+                round(sum(r[k] for r in tw_rows) / len(tw_rows), 2)
+                for k in TW_KEYS
+            ]
+            st.markdown("### Combined Averages (all crews)")
+            x = np.arange(len(TW_LABELS))
+            width = 0.35
+            fig, ax = plt.subplots(figsize=(6, 3))
+            ax.bar(x - width/2, avg_vals, width, label="Average Score")
+            ax.bar(x + width/2, TW_MAXES, width, label="Max")
+            ax.set_xticks(x)
+            ax.set_xticklabels(TW_LABELS)
+            ax.set_ylabel("Points")
+            ax.set_title("TEAM Combined Averages vs Max")
+            ax.legend()
+            fig.tight_layout()
+            st.pyplot(fig, use_container_width=True)
+
 
     # --- PDF Generation (Lazy) ---
     def build_team_pdf(df_scores: pd.DataFrame,
-                       team_assessment: dict | None,
-                       scenario_code_: str) -> io.BytesIO:
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table as RLTable, TableStyle, Image as RLImage
+                   team_rows: list[dict],
+                   scenario_code_: str,
+                   sim_name: str) -> io.BytesIO:
+        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                        Table as RLTable, TableStyle)
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
@@ -2198,6 +2221,7 @@ def page_team_results():
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=letter)
         styles = getSampleStyleSheet()
+
         elems = [
             Paragraph("Team Performance Report", styles["Title"]),
             Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
@@ -2206,6 +2230,7 @@ def page_team_results():
             Paragraph("Team Scores vs Maximum", styles["Heading2"])
         ]
 
+        # ---- Team scores vs max table ----
         data = [df_scores.columns.tolist()] + df_scores.values.tolist()
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
@@ -2218,19 +2243,35 @@ def page_team_results():
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
-        if team_assessment:
-            elems.append(Paragraph("TEAM Assessment", styles["Heading2"]))
-            elems.append(Paragraph(
-                f"Leadership: {team_assessment['leadership']} / 8, "
-                f"Teamwork: {team_assessment['teamwork']} / 28, "
-                f"Task Mgmt: {team_assessment['task_management']} / 8, "
-                f"Overall: {team_assessment['overall_performance']} / 10, "
-                f"Total: {team_assessment['total']} / 54",
-                styles["Normal"]
-            ))
-            if team_assessment.get("comments"):
-                elems.append(Paragraph(f"Comments: {team_assessment['comments']}", styles["Italic"]))
-            elems.append(Spacer(1, 12))
+        # ---- TEAM assessments (multiple) ----
+        if team_rows:
+            elems.append(Paragraph("TEAM Assessments", styles["Heading2"]))
+            TW_MAX = {"leadership": 8, "teamwork": 28, "task_management": 8,
+                    "overall_performance": 10, "total": 54}
+
+            for row in team_rows:
+                elems.append(Paragraph(f"<b>{row['team']}</b>", styles["Heading3"]))
+                txt = (f"Leadership: {row['leadership']} / {TW_MAX['leadership']}, "
+                    f"Teamwork: {row['teamwork']} / {TW_MAX['teamwork']}, "
+                    f"Task Mgmt: {row['task_management']} / {TW_MAX['task_management']}, "
+                    f"Overall: {row['overall_performance']} / {TW_MAX['overall_performance']}, "
+                    f"Total: {row['total']} / {TW_MAX['total']}")
+                elems.append(Paragraph(txt, styles["Normal"]))
+                if row.get("comments"):
+                    elems.append(Paragraph(f"Comments: {row['comments']}", styles["Italic"]))
+                elems.append(Spacer(1, 6))
+
+            # Optional combined averages
+            if len(team_rows) > 1:
+                elems.append(Spacer(1, 12))
+                elems.append(Paragraph("Combined Averages", styles["Heading3"]))
+                avg = lambda k: round(sum(r[k] for r in team_rows)/len(team_rows), 2)
+                avg_txt = (f"Leadership: {avg('leadership')} / {TW_MAX['leadership']}, "
+                        f"Teamwork: {avg('teamwork')} / {TW_MAX['teamwork']}, "
+                        f"Task Mgmt: {avg('task_management')} / {TW_MAX['task_management']}, "
+                        f"Overall: {avg('overall_performance')} / {TW_MAX['overall_performance']}, "
+                        f"Total: {avg('total')} / {TW_MAX['total']}")
+                elems.append(Paragraph(avg_txt, styles["Normal"]))
 
         doc.build(elems)
         buf.seek(0)
@@ -2239,7 +2280,7 @@ def page_team_results():
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
         if st.button("📄 Generate PDF Report"):
-            pdf_buffer = build_team_pdf(df_team_vs_max, tw_row, scenario_code)
+            pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
             st.download_button(
                 "⬇️ Download Report",
                 data=pdf_buffer,
