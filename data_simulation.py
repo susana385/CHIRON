@@ -2,6 +2,19 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import random
 
+# ---------- tiny helper to know if a step is already answered ----------
+def is_decision_answered(prefix: str) -> bool:
+    """
+    Return True if *any* participant has a non-empty / non-SKIP answer
+    for the given inject/decision prefix (e.g. 'Decision 7', 'Inject 2').
+    Uses the caches that questionnaire1.py fills: answers_by_prefix.
+    """
+    pref = prefix.split(":")[0].strip()          # normalize: "Decision 7 (10:30)" -> "Decision 7"
+    by_pref = st.session_state.get("answers_by_prefix", {})
+    pid_map = by_pref.get(pref, {})
+    return any(txt and txt != "SKIP" for txt in pid_map.values())
+
+
 def vary_vital(base, min_val, max_val, unit=""):
     variation = random.randint(-2, 2)
     value = base + variation
@@ -76,8 +89,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
             status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-2(EV2)"] else "offline")
 
             # Fase inicial: gerar valores variáveis até decisão 7
-            answered7 = any(k.startswith("Decision 7") for k in st.session_state.get("answers", {}))
-            st.write(answered7)
+            answered7 = is_decision_answered("Decision 7")
             if not answered7:
                 if "dynamic_vitals" not in st.session_state:
                     st.session_state.dynamic_vitals = {}
