@@ -212,7 +212,7 @@ def page_login():
                     prof = supabase.from_("profiles") \
                                 .select("email") \
                                 .eq("username", login_id) \
-                                .single().execute()
+                                .maybe_single().execute()
                     if not getattr(prof, "data", None):
                         st.error("No such username.")
                         return
