@@ -2,6 +2,7 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import random
 from supabase_client import supabase
+from questionnaire1 import _ensure_answer_indexes,  preload_answers
 
 # ---------- tiny helper to know if a step is already answered ----------
 def normalize_inject_prefix(raw: str) -> str:
@@ -23,24 +24,29 @@ def normalize_inject_prefix(raw: str) -> str:
     return pref
 
 def is_decision_answered(prefix: str) -> bool:
-    prefix = normalize_inject_prefix(prefix)
-    # try cached index first
-    pid_map = st.session_state.get("answers_by_prefix", {}).get(prefix, {})
+    """True if someone answered this decision (not SKIP)."""
+    prefix_norm = normalize_inject_prefix(prefix)
+
+    # 1) Cached index (built by _cache_answer_row → normalize_inject_prefix)
+    pid_map = st.session_state.get("answers_by_prefix", {}).get(prefix_norm, {})
     if any(v and v != "SKIP" for v in pid_map.values()):
         return True
-    # DB fallback
+
+    # 2) DB fallback – match full label with ILIKE
     sim_id = st.session_state.get("simulation_id")
     if not sim_id:
         return False
     try:
-        rows = (supabase.from_("answers")
-                .select("answer_text")
+        rows = (supabase
+                .from_("answers")
+                .select("answer_text, inject")
                 .eq("id_simulation", sim_id)
-                .eq("inject", prefix)
+                .ilike("inject", f"{prefix_norm}%")   # <- catch "(10:37:00)"
                 .execute()).data or []
         return any(r["answer_text"] and r["answer_text"] != "SKIP" for r in rows)
     except Exception:
         return False
+
 
 
 
@@ -118,6 +124,9 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
             status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-2(EV2)"] else "offline")
 
             # Fase inicial: gerar valores variáveis até decisão 7
+            _ensure_answer_indexes()
+            preload_answers(st.session_state.get("simulation_id"))
+
             answered7 = is_decision_answered("Decision 7")
             st.write(answered7)
             if not answered7:
