@@ -77,6 +77,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
 
             # Fase inicial: gerar valores variáveis até decisão 7
             answered7 = any(k.startswith("Decision 7") for k in st.session_state.get("answers", {}))
+            st.write(answered7)
             if not answered7:
                 if "dynamic_vitals" not in st.session_state:
                     st.session_state.dynamic_vitals = {}
