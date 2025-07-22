@@ -105,6 +105,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
 
     inject_css()
     st.session_state.setdefault("vital_effects", {})
+    st.header(f"🚀 Decision Suport Dashboard: {simulation_name}")
 
 
     # initial heart rates in session

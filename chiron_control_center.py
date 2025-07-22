@@ -1215,8 +1215,6 @@ def page_live_dashboard():
     # build_answer_index() only if you actually use it for cross lookups here
     # answer_idx = build_answer_index()
 
-    st.header(f"🚀 Decision Suport Dashboard: {sim_name}")
-
     # Optional: manual hard refresh (bust ttl)
     col1, col2, col3 = st.columns([3, 3, 1])
 
@@ -1233,10 +1231,6 @@ def page_live_dashboard():
             fetch_snapshot.clear()
             sync_simulation_state(sim_id)
             st.rerun()
-
-    st.subheader(f"Simulation: {sim_name}")
-    from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=2000, limit=None, key="vitals_autorefresh")
 
     # 2) Build roster from participants_cache (no new query)
     participants_cache = st.session_state.get("participants_cache", [])
