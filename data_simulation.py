@@ -1,18 +1,47 @@
 import streamlit as st
 import matplotlib.pyplot as plt
 import random
+from supabase_client import supabase
 
 # ---------- tiny helper to know if a step is already answered ----------
+def normalize_inject_prefix(raw: str) -> str:
+    """Return canonical prefix: 'Initial Situation', 'Inject N', 'Decision N'."""
+    if not raw:
+        return ""
+    raw = str(raw).strip()
+    import re
+    m = re.match(r'^(Initial Situation|Inject\s+\d+|Decision\s+\d+)', raw, flags=re.IGNORECASE)
+    if not m:
+        return raw  # unknown pattern, return as-is
+    pref = m.group(1)
+    # Uniform capitalization: “Decision 7”, “Inject 3”
+    parts = pref.split()
+    if parts[0].lower() in ("decision", "inject"):
+        return f"{parts[0].capitalize()} {parts[1]}"
+    if pref.lower().startswith("initial"):
+        return "Initial Situation"
+    return pref
+
 def is_decision_answered(prefix: str) -> bool:
-    """
-    Return True if *any* participant has a non-empty / non-SKIP answer
-    for the given inject/decision prefix (e.g. 'Decision 7', 'Inject 2').
-    Uses the caches that questionnaire1.py fills: answers_by_prefix.
-    """
-    pref = prefix.split(":")[0].strip()          # normalize: "Decision 7 (10:30)" -> "Decision 7"
-    by_pref = st.session_state.get("answers_by_prefix", {})
-    pid_map = by_pref.get(pref, {})
-    return any(txt and txt != "SKIP" for txt in pid_map.values())
+    prefix = normalize_inject_prefix(prefix)
+    # try cached index first
+    pid_map = st.session_state.get("answers_by_prefix", {}).get(prefix, {})
+    if any(v and v != "SKIP" for v in pid_map.values()):
+        return True
+    # DB fallback
+    sim_id = st.session_state.get("simulation_id")
+    if not sim_id:
+        return False
+    try:
+        rows = (supabase.from_("answers")
+                .select("answer_text")
+                .eq("id_simulation", sim_id)
+                .eq("inject", prefix)
+                .execute()).data or []
+        return any(r["answer_text"] and r["answer_text"] != "SKIP" for r in rows)
+    except Exception:
+        return False
+
 
 
 def vary_vital(base, min_val, max_val, unit=""):
