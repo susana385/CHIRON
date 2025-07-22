@@ -1246,7 +1246,7 @@ def page_live_dashboard():
     top_row  = EXPECTED_ROLES[:4]
     bottom_row = EXPECTED_ROLES[4:]
     from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=5000, limit=None, key="supervisor_autorefresh")
+    st_autorefresh(interval=10000, limit=None, key="supervisor_autorefresh")
 
     for row in (top_row, bottom_row):
         cols = st.columns(4, gap="small")
