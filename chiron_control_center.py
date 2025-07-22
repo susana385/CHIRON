@@ -2950,9 +2950,9 @@ def page_running_simulations():
         
                 # (plus mark off FD‐only decisions the same way you already do…)
                 
-                st.write("ALL_STEPS:", all_steps)
-                st.write("ANSWERED:", answered)
-                st.write("next_step:", next_step)
+                # st.write("ALL_STEPS:", all_steps)
+                # st.write("ANSWERED:", answered)
+                # st.write("next_step:", next_step)
 
 
 
@@ -2973,8 +2973,8 @@ def page_running_simulations():
                 # st.write("DEBUG normalized answered prefixes:", answered)
                 # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
 
-                st.write("DEBUG stage", dm_stage)
-                st.write("DEBUG current_decision_index", current_decision_index)
+                # st.write("DEBUG stage", dm_stage)
+                # st.write("DEBUG current_decision_index", current_decision_index)
                 #st.write("DEBUG flat_questions", flat_questions)
                 # st.write ("DEBUG b2",b2)
 
@@ -2998,9 +2998,8 @@ def page_running_simulations():
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
                 
-                st.write(ans12, ans13)
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
