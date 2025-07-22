@@ -2997,6 +2997,8 @@ def page_running_simulations():
                 if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None) or (st.session_state.dm_role != "FD" and ans22 is not None and ans23 is None):
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
+                
+                st.write(ans12, ans13)
 
                 #nav_to("dm_questionnaire")
                 return
