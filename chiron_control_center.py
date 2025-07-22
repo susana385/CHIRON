@@ -1514,8 +1514,6 @@ def page_dashboard():
             sync_simulation_state(sim_id)
             st.rerun()
 
-    st.subheader(f"Decision Support Dashboard — {sim_name}")
-
     # 1) Sync / read snapshot
     sync_simulation_state(sim_id)
     answers_cache = st.session_state.get("answers_cache", [])
