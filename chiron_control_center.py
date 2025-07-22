@@ -1507,7 +1507,7 @@ def page_dashboard():
             nav_to("welcome")
             return
     with top_cols[2]:
-        if st.button("🔄 Hard Refresh"):
+        if st.button("🔄 Refresh"):
             fetch_snapshot.clear()
             sync_simulation_state(sim_id)
             st.rerun()
