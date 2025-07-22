@@ -2,7 +2,10 @@ import streamlit as st
 import matplotlib.pyplot as plt
 import random
 from supabase_client import supabase
-from questionnaire1 import _ensure_answer_indexes,  preload_answers
+from questionnaire1 import (
+    _ensure_answer_indexes, preload_answers,
+    apply_vital_consequences,  # <-- import it
+)
 
 # ---------- tiny helper to know if a step is already answered ----------
 def normalize_inject_prefix(raw: str) -> str:
@@ -106,7 +109,11 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
     inject_css()
     st.session_state.setdefault("vital_effects", {})
     st.header(f"🚀 Decision Suport Dashboard: {simulation_name}")
+    _ensure_answer_indexes()
+    preload_answers(st.session_state.get("simulation_id"))
+    apply_vital_consequences({})
 
+    effects_all = st.session_state.setdefault("vital_effects", {})
 
     # initial heart rates in session
     if 'heart_rates' not in st.session_state:
@@ -118,7 +125,8 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
 
     for col, astro in zip(cols, astronauts):
         with col:
-            effects = st.session_state.get("vital_effects", {}).get(astro["role"], {})
+            effects_all = st.session_state.get("vital_effects", {})
+            effects      = effects_all.get(astro["role"], {})
             status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-2(EV2)"] else "offline")
 
             # Fase inicial: gerar valores variáveis até decisão 7
