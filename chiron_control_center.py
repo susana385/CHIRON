@@ -3287,126 +3287,151 @@ def page_running_simulations():
 
 
 def page_past_simulations():
+    """List finished sims and route user to individual/team results safely."""
+    import json, traceback
+    from postgrest import APIError
+    import pandas as pd
+
     st.header("📜 Past Simulations")
-    # Fetch all simulations whose status is “finished”
-    if st.button("Go back to the Main Menu"):
-            nav_to("welcome")
-    
+    if st.button("🏠 Main Menu"):
+        nav_to("welcome")
+        return
+
+    # ------- 1) Load finished sims (catch API errors) -------
     try:
         res = (
             supabase
             .from_("simulation")
-            .select("id,name,status,started_at,finished_at")   # <-- be explicit
-            .eq("status", "finished")                          # or .in_("status", ["finished","archived"])
+            .select("id,name,status,started_at,finished_at")
+            .in_("status", ["finished", "archived"])   # adapt if you only use "finished"
             .order("finished_at", desc=True)
             .execute()
         )
-    except Exception as e:
-        # Show PostgREST error payload if available
-        import traceback, json
-        st.error("Failed to load simulations.")
-        st.code("".join(traceback.format_exc())[-800:])  # last chars
+    except APIError as e:
+        st.error("Failed to load simulations from Supabase.")
+        st.code(json.dumps({
+            "code": e.code, "message": e.message,
+            "details": e.details, "hint": e.hint
+        }, indent=2))
+        st.code("".join(traceback.format_exc())[-800:])
         return
-    
-    if getattr(res, "error", None):
-        st.error("Supabase error loading simulations:")
-        st.write(res.error)
+    except Exception as e:
+        st.error(f"Unexpected error: {e}")
+        st.code("".join(traceback.format_exc())[-800:])
         return
 
-    sims = res.data or []
+    sims = getattr(res, "data", None) or []
     if not sims:
         st.info("No finished simulations.")
         return
 
-    # 2) No completed sims?
-    if not sims:
-        st.info("No completed simulations yet.")
-        return
+    # current user info
+    role        = st.session_state.get("user_role")
+    profile_id  = st.session_state.get("profile_id") or getattr(st.session_state.get("user", {}), "id", None)
 
-    # 3) List them with a View Results button
+    # ------- 2) Render each sim row -------
     for sim in sims:
-        finished = sim["finished_at"][:10]  # just the YYYY-MM-DD
-        st.write(f"**{sim['name']}** (finished on {finished})")
-        st.session_state.simulation_id   = sim["id"]
-        st.session_state.simulation_name = sim["name"]
-        role = st.session_state.user_role
-        pid = st.session_state.get("profile_id")
-        if "profile_id" not in st.session_state:
-            st.error("⚠️ You must be logged in to view past results.")
-            return
+        sim_id   = sim["id"]
+        sim_name = sim.get("name", "—")
+        fin      = sim.get("finished_at")
+        fin_txt  = pd.to_datetime(fin).strftime("%Y-%m-%d") if fin else "—"
+
+        st.markdown(f"### {sim_name} *(finished on {fin_txt})*")
+
+        # Do NOT overwrite session vars until user clicks something
+        col1, col2, col3 = st.columns([1,1,1])
+
+        # ---- Participant flow ----
         if role == "participant":
-            col1, col2 = st.columns([1,1])
             with col1:
-                if st.button("👤 My Results", key=f"ind_{sim['id']}"):
-                        # stash sim + lookup this participant
-                    st.session_state.simulation_id   = sim["id"]
-                    st.session_state.simulation_name = sim["name"]
-
-                        # find participant row
-                    part = (
-                        supabase
-                        .from_("participant")
-                        .select("…")
-                        .maybe_single()
-                        .execute()
-                    )
-                    # If data comes back empty, supabase returns data=None
-                    if part_resp.data is None:
-                        st.error("You have not joined this simulation.")
+                if st.button("👤 My Results", key=f"ind_{sim_id}"):
+                    if not profile_id:
+                        st.error("You must be logged in to view results.")
                         return
-
-                    st.session_state.participant_id = part["id"]
-                    st.session_state.dm_role         = part["participant_role"]
-                    nav_to("individual_results")
-
-            with col2:
-                if st.button("👥 Team Results", key=f"team_{sim['id']}"):
-                    st.session_state.simulation_id   = sim["id"]
-                    st.session_state.simulation_name = sim["name"]
-                    nav_to("team_results")
-
-        elif role == "supervisor":
-            col1, col2 = st.columns([1,1])
-            with col1:
-                if st.button("👥 Team Results", key=f"team_{sim['id']}"):
-                    st.session_state.simulation_id   = sim["id"]
-                    st.session_state.simulation_name = sim["name"]
-                    nav_to("team_results")
-            
-            with col2:  
-                part_resp = (
+                    # fetch this participant row
+                    part_resp = (
                         supabase
                         .from_("participant")
                         .select("id, participant_role")
-                        .eq("id_simulation", sim["id"])
+                        .eq("id_simulation", sim_id)
+                        .eq("id_profile", profile_id)
+                        .maybe_single()
                         .execute()
                     )
-                if part_resp.error:
+                    part_row = getattr(part_resp, "data", None)
+                    if not part_row:
+                        st.error("You did not participate in this simulation.")
+                        return
+
+                    st.session_state.simulation_id   = sim_id
+                    st.session_state.simulation_name = sim_name
+                    st.session_state.participant_id  = part_row["id"]
+                    st.session_state.dm_role         = part_row["participant_role"]
+                    nav_to("individual_results")
+                    return
+
+            with col2:
+                if st.button("👥 Team Results", key=f"team_{sim_id}"):
+                    st.session_state.simulation_id   = sim_id
+                    st.session_state.simulation_name = sim_name
+                    nav_to("team_results")
+                    return
+
+        # ---- Supervisor / Admin flow ----
+        elif role in ("supervisor", "administrator"):
+            with col1:
+                if st.button("👥 Team Results", key=f"team_{sim_id}"):
+                    st.session_state.simulation_id   = sim_id
+                    st.session_state.simulation_name = sim_name
+                    nav_to("team_results")
+                    return
+
+            with col2:
+                # pick any role to inspect
+                part_resp = (
+                    supabase
+                    .from_("participant")
+                    .select("id, participant_role")
+                    .eq("id_simulation", sim_id)
+                    .execute()
+                )
+                if getattr(part_resp, "error", None):
                     st.error(f"Couldn’t load participants: {part_resp.error.message}")
                     return
-
                 participants = part_resp.data or []
                 if not participants:
-                    st.info("No one participated in that simulation.")
+                    st.info("No participants for this simulation.")
+                else:
+                    role_map = {p["participant_role"]: p["id"] for p in participants}
+                    choice = st.selectbox(
+                        "Pick a role to inspect:",
+                        options=list(role_map.keys()),
+                        key=f"sup_select_{sim_id}"
+                    )
+                    if st.button("👤 View Individual Results", key=f"sup_view_{sim_id}"):
+                        st.session_state.simulation_id   = sim_id
+                        st.session_state.simulation_name = sim_name
+                        st.session_state.participant_id  = role_map[choice]
+                        st.session_state.dm_role         = choice
+                        nav_to("individual_results")
+                        return
+
+        # ---- Manager or other roles ----
+        elif role == "manager":
+            with col1:
+                if st.button("📊 Dashboard", key=f"dash_{sim_id}"):
+                    st.session_state.simulation_id = sim_id
+                    nav_to("dashboard")
+                    return
+        else:
+            with col1:
+                if st.button("⚙ Control Center", key=f"ctrl_{sim_id}"):
+                    st.session_state.simulation_id = sim_id
+                    nav_to("control_center")
                     return
 
-                    # 2) build a mapping and a selectbox
-                role_map = { p["participant_role"]: p["id"] for p in participants }
-                choice = st.selectbox(
-                    "Pick a role to inspect:",
-                    options=list(role_map.keys()),
-                    key=f"sup_select_{sim['id']}"
-                )
+        st.markdown("---")
 
-                    # 3) when they click, navigate
-                if st.button("👤 View Individual Results", key=f"sup_view_{sim['id']}"):
-                    st.session_state.participant_id = role_map[choice]
-                    st.session_state.dm_role         = choice
-                    nav_to("individual_results")
-        elif role == "manager":
-            nav_to("dashboard")
-        else:  # administrator
-            nav_to("control_center")
 
 #
 # ——— Main routing ——————————————————————————————————————————————————————————————
