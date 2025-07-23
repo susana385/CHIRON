@@ -1957,13 +1957,7 @@ def page_certify_and_results():
 
 
 def page_team_results():
-    """
-    Aggregated team performance page.
-    - Uses ONLY DB tables (answers, individual_results, max_scores, teamwork, simulation).
-    - Derives scenario_code from FD answers to 7/13/23/34.
-    - Compares summed team scores vs summed max per category.
-    - Plots TEAM (Leadership, Teamwork, Task Mgmt) side-by-side.
-    """
+    """Display aggregated team performance, max comparisons, TEAM assessment, and export report."""
     import io
     import re
     import numpy as np
@@ -1980,53 +1974,70 @@ def page_team_results():
         return
 
     st.header("🏆 Team Performance Results")
-    st.caption(f"Simulation: **{sim_name}** (id={sim_id})")
+    st.subheader(f"Simulation: {sim_name} (id={sim_id})")
 
-    # ------------------- helpers -------------------
-    def normalize(lbl: str) -> str:
-        if not lbl:
+    # ---------- helpers ----------
+    def normalize(label: str) -> str:
+        if not label:
             return ""
-        m = re.match(r"^(Decision \d+|Inject \d+|Initial Situation)", lbl.strip())
-        return m.group(1) if m else lbl.strip()
+        m = re.match(r"^(Decision \d+|Inject \d+|Initial Situation)", label.strip())
+        return m.group(1) if m else label.strip()
 
-    def scenario_token(dec_label: str, ans_text: str) -> str:
-        # same logic used elsewhere: first letter before '.', lowercase
-        base = ans_text.split(".")[0].strip().lower()
-        letter = base[0] if base else "x"
-        number = dec_label.split()[-1]
-        return f"{letter}{number}"
+    # ---------- ensure snapshot (optional, but you already use it elsewhere) ----------
+    sync_simulation_state(sim_id)
+    participants_cache = st.session_state.get("participants_cache", [])
+    answers_cache      = st.session_state.get("answers_cache", [])
 
-    MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
-    PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
-    ALL_CATS  = MED_CATS + PROC_CATS
-
-    RAW_TO_TOTAL = {
-        "basic_life_support":             "basic_life_support_total",
-        "primary_survey":                 "primary_survey_total",
-        "secondary_survey":               "secondary_survey_total",
-        "definitive_care":                "definitive_care_total",
-        "crew_roles_communication":       "crew_roles_communication_total",
-        "systems_procedural_knowledge":   "systems_procedural_knowledge_total",
-    }
-
-    # ------------------- DB fetches -------------------
+    # ---------- simulation status ----------
     @st.cache_data(ttl=5)
     def fetch_sim_status(sim_id_):
-        return (supabase
-                .from_("simulation")
-                .select("status,name")
-                .eq("id", sim_id_)
-                .maybe_single()
-                .execute()).data
+        try:
+            res = (supabase
+                   .from_("simulation")
+                   .select("status,name")
+                   .eq("id", sim_id_)
+                   .maybe_single()
+                   .execute())
+            return res.data
+        except Exception:
+            return None
 
-    @st.cache_data(ttl=10)
-    def fetch_participants(sim_id_):
-        return (supabase
-                .from_("participant")
-                .select("id, participant_role")
-                .eq("id_simulation", sim_id_)
-                .execute()).data or []
+    sim_row = fetch_sim_status(sim_id)
+    if not sim_row:
+        st.error("Could not load simulation status.")
+        return
+    if sim_row.get("status") != "finished":
+        st.info("⏳ Simulation not yet marked finished.")
+        if st.button("⬅️ Back"):
+            nav_to("certify_and_results")
+        return
 
+    # ---------- FD id ----------
+    # participants_cache may be list or dict; handle both
+    if isinstance(participants_cache, dict):
+        plist = list(participants_cache.values())
+    else:
+        plist = participants_cache
+
+    fd_id = next((p["id"] for p in plist if p.get("participant_role") == "FD"), None)
+    if not fd_id:
+        # fallback: query
+        try:
+            fd_q = (supabase.from_("participant")
+                    .select("id")
+                    .eq("id_simulation", sim_id)
+                    .eq("participant_role", "FD")
+                    .maybe_single()
+                    .execute())
+            fd_id = fd_q.data["id"] if fd_q.data else None
+        except Exception:
+            fd_id = None
+
+    if not fd_id:
+        st.error("Flight Director not found.")
+        return
+
+    # ---------- FD key answers & scenario code ----------
     @st.cache_data(ttl=10)
     def fetch_fd_answers_map(sim_id_, fd_pid):
         rows = (supabase
@@ -2050,55 +2061,11 @@ def page_team_results():
         st.error(f"Missing FD key decisions: {', '.join(missing)}")
         return
 
-    @st.cache_data(ttl=10)
-    def fetch_individual(sim_id_):
-        return (supabase
-                .from_("individual_results")
-                .select(",".join(ALL_CATS))
-                .eq("simulation_id", sim_id_)
-                .execute()).data or []
-
-    @st.cache_data(ttl=10)
-    def fetch_max_scores(code: str):
-        return (supabase
-                .from_("max_scores")
-                .select("role,category,max_value,scenario_code")
-                .eq("scenario_code", code)
-                .execute()).data or []
-
-    @st.cache_data(ttl=10)
-    def fetch_teamwork_all(sim_id_):
-        return (supabase
-                .from_("teamwork")
-                .select("team,leadership,teamwork,task_management,overall_performance,total,comments,created_at")
-                .eq("id_simulation", sim_id_)
-                .execute()).data or []
-
-    # ------------------- simulation state -------------------
-    sim_row = fetch_sim_status(sim_id)
-    if not sim_row:
-        st.error("Could not load simulation status.")
-        return
-    if sim_row.get("status") != "finished":
-        st.info("⏳ Simulation not yet marked finished.")
-        if st.button("⬅️ Back"):
-            nav_to("certify_and_results")
-        return
-
-    parts = fetch_participants(sim_id)
-    fd_id = next((p["id"] for p in parts if p.get("participant_role") == "FD"), None)
-    if not fd_id:
-        st.error("FD not found.")
-        return
-
-    # ------------------- scenario code -------------------
-    fd_ans_rows = fetch_fd_answers_map(sim_id, fd_id)
-    fd_map = {normalize(r["inject"]): r["answer_text"] for r in fd_ans_rows if r.get("answer_text")}
-    needed = ["Decision 7","Decision 13","Decision 23","Decision 34"]
-    missing = [n for n in needed if n not in fd_map]
-    if missing:
-        st.error(f"Missing FD key decisions: {', '.join(missing)}")
-        return
+    def scenario_token(dec_label: str, ans_text: str) -> str:
+        base = ans_text.split(".")[0].strip().lower()
+        letter = base[0] if base else "x"
+        number = dec_label.split()[-1]
+        return f"{letter}{number}"
 
     scenario_code = ",".join([
         scenario_token("Decision 7",  fd_map["Decision 7"]),
@@ -2106,19 +2073,51 @@ def page_team_results():
         scenario_token("Decision 23", fd_map["Decision 23"]),
         scenario_token("Decision 34", fd_map["Decision 34"]),
     ])
-    st.caption(f"Scenario code: `{scenario_code}`")
+    st.caption(f"**Scenario code:** `{scenario_code}`")
 
-    # ------------------- team totals vs max -------------------
+    # ---------- load individual_results ----------
+    @st.cache_data(ttl=10)
+    def fetch_individual(sim_id_):
+        res = (supabase
+               .from_("individual_results")
+               .select("basic_life_support, primary_survey, secondary_survey, "
+                       "definitive_care, crew_roles_communication, systems_procedural_knowledge")
+               .eq("simulation_id", sim_id_)
+               .execute())
+        return res.data or []
+
     ind_rows = fetch_individual(sim_id)
     if not ind_rows:
-        st.info("No individual_results rows yet.")
+        st.info("No individual aggregate results yet.")
         return
+
     df_ind = pd.DataFrame(ind_rows)
 
-    # team actual sums per cat
+    MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
+    PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
+    ALL_CATS  = MED_CATS + PROC_CATS
+
     actual_totals = df_ind[ALL_CATS].sum().to_dict()
 
-    # max scores from table
+    # ---------- max_scores for scenario ----------
+    RAW_TO_TOTAL = {
+        "basic_life_support":             "basic_life_support_total",
+        "primary_survey":                 "primary_survey_total",
+        "secondary_survey":               "secondary_survey_total",
+        "definitive_care":                "definitive_care_total",
+        "crew_roles_communication":       "crew_roles_communication_total",
+        "systems_procedural_knowledge":   "systems_procedural_knowledge_total",
+    }
+
+    @st.cache_data(ttl=10)
+    def fetch_max_scores(code: str):
+        res = (supabase
+               .from_("max_scores")
+               .select("role,category,max_value,scenario_code")
+               .eq("scenario_code", code)
+               .execute())
+        return res.data or []
+
     ms_rows = fetch_max_scores(scenario_code)
     if not ms_rows:
         st.warning("No max_scores rows found for this scenario code.")
@@ -2126,23 +2125,23 @@ def page_team_results():
     else:
         df_ms = pd.DataFrame(ms_rows)
         df_ms["category"] = df_ms["category"].str.lower()
-
         team_max_by_cat = {}
         for raw_cat, total_cat in RAW_TO_TOTAL.items():
             m = df_ms[df_ms["category"] == total_cat.lower()]["max_value"].sum()
             team_max_by_cat[raw_cat] = float(m) if not pd.isna(m) else 0.0
 
+    # ---------- table Team vs Max ----------
     rows = []
     for cat in ALL_CATS:
         actual = actual_totals.get(cat, 0.0)
         mval   = team_max_by_cat.get(cat, 0.0)
-        pct    = f"{100*actual/mval:.1f}%" if mval else "—"
+        pct    = f"{(100*actual/mval):.1f}%" if mval else "—"
         rows.append([cat.replace("_"," ").title(), actual, mval, pct])
 
     med_actual_sum  = sum(actual_totals[c] for c in MED_CATS)
-    med_max_sum     = sum(team_max_by_cat.get(c, 0) for c in MED_CATS)
+    med_max_sum     = sum(team_max_by_cat.get(c, 0.0) for c in MED_CATS)
     proc_actual_sum = sum(actual_totals[c] for c in PROC_CATS)
-    proc_max_sum    = sum(team_max_by_cat.get(c, 0) for c in PROC_CATS)
+    proc_max_sum    = sum(team_max_by_cat.get(c, 0.0) for c in PROC_CATS)
     grand_actual    = med_actual_sum + proc_actual_sum
     grand_max       = med_max_sum + proc_max_sum
 
@@ -2159,96 +2158,76 @@ def page_team_results():
     st.subheader("📊 Team Scores vs Maximum")
     st.dataframe(df_team_vs_max, use_container_width=True)
 
-    # ------------------- TEAM assessments -------------------
+    # ---------- TEAM assessments ----------
+    @st.cache_data(ttl=10)
+    def fetch_teamwork_all(sim_id_):
+        res = (supabase
+               .from_("teamwork")
+               .select("team, leadership, teamwork, task_management, overall_performance, total, comments, created_at")
+               .eq("id_simulation", sim_id_)
+               .execute())
+        return res.data or []
+
     tw_rows = fetch_teamwork_all(sim_id)
+
     if not tw_rows:
         st.info("No TEAM assessments found.")
-        team_rows_for_pdf = []
+        team_figs = []
     else:
-        team_rows_for_pdf = tw_rows
         st.subheader("🔹 TEAM Assessments (by crew)")
+        TW_LABELS = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
+        TW_KEYS   = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
+        TW_MAXES  = [8, 28, 8, 10, 54]
 
-        # Make three side-by-side charts for Leadership, Teamwork, Task Mgmt (per crew)
-        TW_KEYS   = ["leadership", "teamwork", "task_management"]
-        TW_LABELS = ["Leadership", "Teamwork", "Task Mgmt"]
-        TW_MAX    = {"leadership": 8, "teamwork": 28, "task_management": 8,
-                     "overall_performance": 10, "total": 54}
-
-        # One row of columns per crew
+        figs = []
         for row in tw_rows:
-            st.markdown(f"#### {row['team']}")
-            c1, c2, c3 = st.columns(3)
-            vals = [row[k] for k in TW_KEYS]
+            values = [row[k] for k in TW_KEYS]
+            x = np.arange(len(TW_LABELS))
+            width = 0.35
+            fig, ax = plt.subplots(figsize=(4,3))
+            ax.bar(x - width/2, values, width, label="Score")
+            ax.bar(x + width/2, TW_MAXES, width, label="Max")
+            ax.set_xticks(x)
+            ax.set_xticklabels(TW_LABELS, fontsize=8)
+            ax.set_ylabel("Points")
+            ax.set_title(row['team'])
+            ax.legend(fontsize=6)
+            fig.tight_layout()
+            figs.append((fig, row))
 
-            # left column: leadership bar
-            with c1:
-                fig, ax = plt.subplots(figsize=(3,2))
-                ax.bar([0,1], [vals[0], TW_MAX["leadership"]], width=0.4)
-                ax.set_xticks([0,1])
-                ax.set_xticklabels(["Score","Max"])
-                ax.set_title("Leadership")
-                fig.tight_layout()
-                st.pyplot(fig, use_container_width=True)
-
-            # middle: teamwork bar
-            with c2:
-                fig, ax = plt.subplots(figsize=(3,2))
-                ax.bar([0,1], [vals[1], TW_MAX["teamwork"]], width=0.4)
-                ax.set_xticks([0,1])
-                ax.set_xticklabels(["Score","Max"])
-                ax.set_title("Teamwork")
-                fig.tight_layout()
-                st.pyplot(fig, use_container_width=True)
-
-            # right: task mgmt bar
-            with c3:
-                fig, ax = plt.subplots(figsize=(3,2))
-                ax.bar([0,1], [vals[2], TW_MAX["task_management"]], width=0.4)
-                ax.set_xticks([0,1])
-                ax.set_xticklabels(["Score","Max"])
-                ax.set_title("Task Mgmt")
-                fig.tight_layout()
-                st.pyplot(fig, use_container_width=True)
-
-            # Optional details expander
-            with st.expander("Details / Overall"):
-                st.write(f"- Overall: **{row['overall_performance']}** / {TW_MAX['overall_performance']}")
-                st.write(f"- Total: **{row['total']}** / {TW_MAX['total']}")
+        # show side-by-side (3 per row)
+        cols = st.columns(min(3, len(figs)))
+        for i, (fig, row) in enumerate(figs):
+            cols[i % 3].pyplot(fig, use_container_width=True)
+            with cols[i % 3].expander("Details"):
+                st.write(f"- Leadership: **{row['leadership']}** / 8")
+                st.write(f"- Teamwork: **{row['teamwork']}** / 28")
+                st.write(f"- Task Mgmt: **{row['task_management']}** / 8")
+                st.write(f"- Overall: **{row['overall_performance']}** / 10")
+                st.write(f"- Total: **{row['total']}** / 54")
                 if row.get("comments"):
                     st.write(f"_Comments:_ {row['comments']}")
-            st.markdown("---")
 
-        # Combined averages (if many crews)
+        # Combined averages
         if len(tw_rows) >= 2:
-            st.markdown("### Combined Averages")
-            avg_vals = {k: round(sum(r[k] for r in tw_rows)/len(tw_rows), 2)
-                        for k in ["leadership","teamwork","task_management","overall_performance","total"]}
+            avg_vals = [
+                round(sum(r[k] for r in tw_rows) / len(tw_rows), 2)
+                for k in TW_KEYS
+            ]
+            st.markdown("### Combined Averages (all crews)")
+            x = np.arange(len(TW_LABELS))
+            width = 0.35
+            fig_avg, ax_avg = plt.subplots(figsize=(4,3))
+            ax_avg.bar(x - width/2, avg_vals, width, label="Average Score")
+            ax_avg.bar(x + width/2, TW_MAXES, width, label="Max")
+            ax_avg.set_xticks(x)
+            ax_avg.set_xticklabels(TW_LABELS, fontsize=8)
+            ax_avg.set_ylabel("Points")
+            ax_avg.legend(fontsize=6)
+            fig_avg.tight_layout()
+            st.pyplot(fig_avg, use_container_width=True)
 
-            c1, c2, c3 = st.columns(3)
-            # Three sub-scores side by side again
-            with c1:
-                fig, ax = plt.subplots(figsize=(3,2))
-                ax.bar([0,1], [avg_vals["leadership"], TW_MAX["leadership"]])
-                ax.set_xticks([0,1]); ax.set_xticklabels(["Avg","Max"])
-                ax.set_title("Leadership Avg")
-                fig.tight_layout(); st.pyplot(fig, use_container_width=True)
-            with c2:
-                fig, ax = plt.subplots(figsize=(3,2))
-                ax.bar([0,1], [avg_vals["teamwork"], TW_MAX["teamwork"]])
-                ax.set_xticks([0,1]); ax.set_xticklabels(["Avg","Max"])
-                ax.set_title("Teamwork Avg")
-                fig.tight_layout(); st.pyplot(fig, use_container_width=True)
-            with c3:
-                fig, ax = plt.subplots(figsize=(3,2))
-                ax.bar([0,1], [avg_vals["task_management"], TW_MAX["task_management"]])
-                ax.set_xticks([0,1]); ax.set_xticklabels(["Avg","Max"])
-                ax.set_title("Task Mgmt Avg")
-                fig.tight_layout(); st.pyplot(fig, use_container_width=True)
-
-            st.write(f"**Overall Avg:** {avg_vals['overall_performance']} / {TW_MAX['overall_performance']}")
-            st.write(f"**Total Avg:** {avg_vals['total']} / {TW_MAX['total']}")
-
-    # ------------------- PDF -------------------
+    # ---------- PDF ----------
     def build_team_pdf(df_scores: pd.DataFrame,
                        team_rows: list[dict],
                        scenario_code_: str,
@@ -2276,18 +2255,20 @@ def page_team_results():
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), HexColor("#1F4E78")),
-            ("TEXTCOLOR",  (0,0), (-1,0), colors.white),
-            ("GRID",       (0,0), (-1,-1), 0.25, colors.grey),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
             ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
-            ("ALIGN",      (1,1), (-1,-1), "CENTER"),
+            ("ALIGN", (1,1), (-1,-1), "CENTER"),
         ]))
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
+        # TEAM rows
         if team_rows:
             elems.append(Paragraph("TEAM Assessments", styles["Heading2"]))
             TW_MAX = {"leadership": 8, "teamwork": 28, "task_management": 8,
                       "overall_performance": 10, "total": 54}
+
             for row in team_rows:
                 elems.append(Paragraph(f"<b>{row['team']}</b>", styles["Heading3"]))
                 txt = (f"Leadership: {row['leadership']} / {TW_MAX['leadership']}, "
@@ -2300,15 +2281,25 @@ def page_team_results():
                     elems.append(Paragraph(f"Comments: {row['comments']}", styles["Italic"]))
                 elems.append(Spacer(1, 6))
 
+            if len(team_rows) > 1:
+                elems.append(Spacer(1, 12))
+                elems.append(Paragraph("Combined Averages", styles["Heading3"]))
+                avg = lambda k: round(sum(r[k] for r in team_rows)/len(team_rows), 2)
+                avg_txt = (f"Leadership: {avg('leadership')} / {TW_MAX['leadership']}, "
+                           f"Teamwork: {avg('teamwork')} / {TW_MAX['teamwork']}, "
+                           f"Task Mgmt: {avg('task_management')} / {TW_MAX['task_management']}, "
+                           f"Overall: {avg('overall_performance')} / {TW_MAX['overall_performance']}, "
+                           f"Total: {avg('total')} / {TW_MAX['total']}")
+                elems.append(Paragraph(avg_txt, styles["Normal"]))
+
         doc.build(elems)
         buf.seek(0)
         return buf
 
-    st.markdown("---")
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
         if st.button("📄 Generate PDF Report"):
-            pdf_buffer = build_team_pdf(df_team_vs_max, team_rows_for_pdf, scenario_code, sim_name)
+            pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
             st.download_button(
                 "⬇️ Download Report",
                 data=pdf_buffer,
@@ -2319,6 +2310,7 @@ def page_team_results():
     with col_nav:
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
+
 
 
 
