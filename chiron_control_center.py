@@ -56,7 +56,7 @@ def fetch_snapshot(sim_id: str, last_answer_id: int):
     # ANSWERS DELTA
     answers_delta = (supabase
         .from_("answers")
-        .select("id,id_simulation, simulation_name, id_participant, participant_role, inject,answer_text, basic_life_support, primary_survey, secondary_survey, definitive_care, crew_roles_communication, systems_procedural_knowledge, response_time")
+        .select("id,id_simulation, simulation_name, id_participant, participant_role, inject,answer_text, basic_life_support, primary_survey, secondary_survey, definitive_care, crew_roles_communication, systems_procedural_knowledge, response_seconds,penalty")
         .eq("id_simulation", sim_id)
         .gt("id", last_answer_id)
         .order("id")
@@ -2481,77 +2481,49 @@ def page_individual_results():
     st.markdown("---")
     st.subheader("📝 Your Raw Answers")
 
+    # 1) Filter this participant
     my_answers = [a for a in answers_cache
-                  if a["id_simulation"] == sim_id
-                  and a["id_participant"] == part_id]
+                if a["id_simulation"] == sim_id
+                and a["id_participant"] == part_id]
+
+    import pandas as pd, re
 
     if not my_answers:
         st.info("No answers recorded yet.")
-        df_raw = pd.DataFrame(columns=["penalty"])
-        total_penalty = 0.0
     else:
-        # ----- build ordered raw answers table -----
         df_raw = pd.DataFrame(my_answers)
 
-        if df_raw.empty:
-            st.info("No answers recorded yet.")
-        else:
-            # make sure numeric cols exist
-            num_cols = [
-                "basic_life_support","primary_survey","secondary_survey","definitive_care",
-                "crew_roles_communication","systems_procedural_knowledge",
-                "response_seconds","penalty"
-            ]
-            for c in num_cols:
-                if c not in df_raw.columns:
-                    df_raw[c] = 0
-            df_raw[num_cols] = df_raw[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
+        # 2) Normalize order for sorting
+        ORDER = [
+            "Initial Situation","Inject 1",
+            *[f"Decision {i}" for i in range(1,14)],
+            "Inject 2",
+            *[f"Decision {i}" for i in range(14,24)],
+            "Inject 3",
+            *[f"Decision {i}" for i in range(24,29)],
+            "Inject 4",
+            *[f"Decision {i}" for i in range(29,35)],
+            *[f"Decision {i}" for i in range(35,44)],
+        ]
 
-            # ordering helper
-            def _norm(lbl: str):
-                import re
-                m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", (lbl or "").strip())
-                return m.group(1) if m else lbl
+        def norm(lbl):
+            m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", str(lbl))
+            return m.group(1) if m else str(lbl)
 
-            ORDER = (["Initial Situation","Inject 1"] +
-                    [f"Decision {i}" for i in range(1,14)] +
-                    ["Inject 2"] +
-                    [f"Decision {i}" for i in range(14,24)] +
-                    ["Inject 3"] +
-                    [f"Decision {i}" for i in range(24,29)] +
-                    ["Inject 4"] +
-                    [f"Decision {i}" for i in range(29,35)] +
-                    [f"Decision {i}" for i in range(35,44)])
-            order_idx = {p:i for i,p in enumerate(ORDER)}
+        df_raw["prefix"] = df_raw["inject"].map(norm)
+        df_raw["order_no"] = pd.Categorical(df_raw["prefix"], ORDER, ordered=True)
+        df_raw = df_raw.sort_values("order_no").drop(columns=["order_no"])
 
-            df_raw["__pref__"]    = df_raw["inject"].map(_norm)
-            df_raw["__sort_ix__"] = df_raw["__pref__"].map(order_idx).fillna(9999)
-            df_raw = df_raw.sort_values("__sort_ix__")
+        # 3) Columns to show (only if they exist)
+        cols = ["inject","answer_text","response_seconds","penalty",
+                "basic_life_support","primary_survey","secondary_survey",
+                "definitive_care","crew_roles_communication","systems_procedural_knowledge"]
+        cols = [c for c in cols if c in df_raw.columns]
 
-            cols_show = ["inject","answer_text",
-                        "basic_life_support","primary_survey","secondary_survey","definitive_care",
-                        "crew_roles_communication","systems_procedural_knowledge",
-                        "response_seconds","penalty"]
-
-            df_show = df_raw[cols_show].rename(columns={
-                "inject":"Step",
-                "answer_text":"Your Answer",
-                "basic_life_support":"BLS",
-                "primary_survey":"Primary",
-                "secondary_survey":"Secondary",
-                "definitive_care":"Def. Care",
-                "crew_roles_communication":"Crew/Comm",
-                "systems_procedural_knowledge":"Sys/Proc",
-                "response_seconds":"Resp (s)",
-                "penalty":"Penalty"
-            })
-
-            st.dataframe(df_show, use_container_width=True)
+        st.dataframe(df_raw[cols], use_container_width=True)
 
             # totals for penalty/score-after-penalty (if you use them later)
-            total_penalty = float(df_raw["penalty"].sum())
-
-
+    total_penalty = float(df_raw["penalty"].sum())
     score_after_penalty = actual_total - total_penalty
 
     # ---------- Charts ----------
