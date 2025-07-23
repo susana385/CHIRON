@@ -2422,14 +2422,18 @@ def page_individual_results():
 
     # ---------------------- RAW ANSWERS & PENALTY (MOVE EARLY) ----------------------
     my_answers = [a for a in answers_cache
-                  if a["id_simulation"] == sim_id
-                  and a["id_participant"] == part_id]
+              if a["id_simulation"] == sim_id
+              and a["id_participant"] == part_id]
 
     import pandas as pd
     df_raw = pd.DataFrame(my_answers) if my_answers else pd.DataFrame(
         columns=["inject","answer_text","penalty","response_seconds"]
     )
-    total_penalty = float(df_raw.get("penalty", 0).fillna(0).sum())
+
+    if "penalty" in df_raw.columns:
+        total_penalty = float(df_raw["penalty"].fillna(0).sum())
+    else:
+        total_penalty = 0.0
     # --------------------------------------------------------------------------------
 
     # --- Fetch role-specific max scores for this scenario ---
