@@ -2028,14 +2028,27 @@ def page_team_results():
                 .execute()).data or []
 
     @st.cache_data(ttl=10)
-    def fetch_fd_answers(sim_id_, fd_pid):
-        return (supabase
+    def fetch_fd_answers_map(sim_id_, fd_pid):
+        rows = (supabase
                 .from_("answers")
                 .select("inject,answer_text")
                 .eq("id_simulation", sim_id_)
                 .eq("id_participant", fd_pid)
-                .in_("inject", ["Decision 7","Decision 13","Decision 23","Decision 34"])
                 .execute()).data or []
+        wanted = {"Decision 7","Decision 13","Decision 23","Decision 34"}
+        out = {}
+        for r in rows:
+            pref = normalize(r["inject"])
+            if pref in wanted and r.get("answer_text"):
+                out[pref] = r["answer_text"]
+        return out
+
+    fd_map = fetch_fd_answers_map(sim_id, fd_id)
+
+    missing = [k for k in ["Decision 7","Decision 13","Decision 23","Decision 34"] if k not in fd_map]
+    if missing:
+        st.error(f"Missing FD key decisions: {', '.join(missing)}")
+        return
 
     @st.cache_data(ttl=10)
     def fetch_individual(sim_id_):
@@ -2079,7 +2092,7 @@ def page_team_results():
         return
 
     # ------------------- scenario code -------------------
-    fd_ans_rows = fetch_fd_answers(sim_id, fd_id)
+    fd_ans_rows = fetch_fd_answers_map(sim_id, fd_id)
     fd_map = {normalize(r["inject"]): r["answer_text"] for r in fd_ans_rows if r.get("answer_text")}
     needed = ["Decision 7","Decision 13","Decision 23","Decision 34"]
     missing = [n for n in needed if n not in fd_map]
