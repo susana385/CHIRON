@@ -2207,6 +2207,74 @@ def page_team_results():
                 st.write(f"- Total: **{row['total']}** / 54")
                 if row.get("comments"):
                     st.write(f"_Comments:_ {row['comments']}")
+                    
+    # ---------- NASA TLX (combined radar) ----------
+    @st.cache_data(ttl=10)
+    def fetch_tlx_all(sim_id_):
+        return (
+            supabase
+            .from_("taskload_responses")
+            .select("participant_role, mental, physical, temporal, performance, effort, frustration")
+            .eq("id_simulation", sim_id_)
+            .execute()
+        ).data or []
+
+    tlx_rows = fetch_tlx_all(sim_id)
+
+    if not tlx_rows:
+        st.info("No TLX responses to aggregate.")
+    else:
+        import numpy as np
+        import pandas as pd
+        import matplotlib.pyplot as plt
+
+        df_tlx = pd.DataFrame(tlx_rows)
+
+        dims = ["mental","physical","temporal","performance","effort","frustration"]
+        nice = [d.title() for d in dims]
+
+        # --- 1) Overall average radar ---
+        avg_vals = df_tlx[dims].mean().tolist()
+        avg_vals += avg_vals[:1]               # close the loop
+
+        angles = np.linspace(0, 2*np.pi, len(dims), endpoint=False).tolist()
+        angles += angles[:1]
+
+        fig_all, ax_all = plt.subplots(subplot_kw={"polar": True}, figsize=(4,4))
+        ax_all.plot(angles, avg_vals, linewidth=2)
+        ax_all.fill(angles, avg_vals, alpha=0.25)
+        ax_all.set_xticks(angles[:-1])
+        ax_all.set_xticklabels(nice, fontsize=8)
+        ax_all.set_ylim(0, 20)
+        ax_all.set_title("NASA TLX – Team Average", fontsize=10)
+        fig_all.tight_layout()
+
+        # --- 2) Per-role radar (optional) ---
+        # If you want one radar per role, uncomment below
+        figs_roles = []
+        for role, grp in df_tlx.groupby("participant_role"):
+            vals = grp[dims].mean().tolist()
+            vals += vals[:1]
+            fig_r, ax_r = plt.subplots(subplot_kw={"polar": True}, figsize=(3.6,3.6))
+            ax_r.plot(angles, vals, linewidth=2)
+            ax_r.fill(angles, vals, alpha=0.20)
+            ax_r.set_xticks(angles[:-1])
+            ax_r.set_xticklabels(nice, fontsize=7)
+            ax_r.set_ylim(0, 20)
+            ax_r.set_title(role, fontsize=8)
+            fig_r.tight_layout()
+            figs_roles.append(fig_r)
+
+        st.subheader("🧠 NASA TLX (Workload)")
+        col_all = st.columns([1,2])[0]
+        col_all.pyplot(fig_all, use_container_width=True)
+
+        # show roles 3 per row
+        if figs_roles:
+            cols = st.columns(3)
+            for i, fig in enumerate(figs_roles):
+                cols[i % 3].pyplot(fig, use_container_width=True)
+
 
     # ---------- PDF ----------
     def build_team_pdf(df_scores: pd.DataFrame,
