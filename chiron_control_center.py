@@ -2991,6 +2991,8 @@ def page_running_simulations():
                 st.session_state.all_questions          = flat_questions
                 st.session_state.current_decision_index = current_decision_index
                 st.session_state.dm_stage               = dm_stage
+                st.session_state._stage_locked = True    # prevent auto-derivation from overwriting
+
                 # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
                 # idx = st.session_state.current_decision_index
                 # st.write("🔍 debug current_decision_index:", idx)
@@ -3007,6 +3009,11 @@ def page_running_simulations():
                     st.warning("⏳ Wait for FD to answer the key decision to try to join again")
                     return
                 
+                st.write("DEBUG → dm_stage:", dm_stage,
+                    "current_decision_index:", current_decision_index,
+                    "next_step:", next_step,
+                    "is_inject:", next_step.startswith("Inject") if next_step else None)
+
 
                 #nav_to("dm_questionnaire")
                 return
