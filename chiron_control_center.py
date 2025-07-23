@@ -2313,6 +2313,13 @@ def page_simulation_menu():
     if st.button("▶️ Go to Teamwork Assessment"):
         nav_to("page_one")
 
+def _norm(lbl: str) -> str:
+    import re
+    if not lbl:
+        return ""
+    m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", lbl.strip())
+    return m.group(1) if m else lbl.strip()
+
 
 def page_individual_results():
     """Show the current participant's individual performance summary."""
@@ -2483,8 +2490,10 @@ def page_individual_results():
         df_raw = pd.DataFrame(columns=["penalty"])
         total_penalty = 0.0
     else:
+        # ----- build ordered raw answers table -----
         df_raw = pd.DataFrame(my_answers)
 
+        # ensure numeric cols exist & are numeric
         num_cols = ["basic_life_support","primary_survey","secondary_survey",
                     "definitive_care","crew_roles_communication",
                     "systems_procedural_knowledge","penalty","response_seconds"]
@@ -2493,10 +2502,32 @@ def page_individual_results():
                 df_raw[c] = 0
         df_raw[num_cols] = df_raw[num_cols].apply(pd.to_numeric, errors="coerce").fillna(0)
 
+        # create chronological order index
+        ORDER = [
+            "Initial Situation",
+            "Inject 1",
+            *[f"Decision {i}" for i in range(1,14)],
+            "Inject 2",
+            *[f"Decision {i}" for i in range(14,24)],
+            "Inject 3",
+            *[f"Decision {i}" for i in range(24,29)],
+            "Inject 4",
+            *[f"Decision {i}" for i in range(29,35)],
+            *[f"Decision {i}" for i in range(35,44)],
+        ]
+        order_idx = {p:i for i,p in enumerate(ORDER)}
+
+        df_raw["__pref__"]   = df_raw["inject"].map(_norm)
+        df_raw["__sort_ix__"] = df_raw["__pref__"].map(order_idx).fillna(9999)
+
+        df_raw = df_raw.sort_values("__sort_ix__")
+
+        # columns to display (now including response_seconds)
         cols_show = ["inject","answer_text",
-                     "basic_life_support","primary_survey","secondary_survey","definitive_care",
-                     "crew_roles_communication","systems_procedural_knowledge",
-                     "response_seconds","penalty"]
+                    "basic_life_support","primary_survey","secondary_survey","definitive_care",
+                    "crew_roles_communication","systems_procedural_knowledge",
+                    "response_seconds","penalty"]
+
         df_show = df_raw[cols_show].rename(columns={
             "inject":"Step",
             "answer_text":"Your Answer",
@@ -2509,9 +2540,11 @@ def page_individual_results():
             "response_seconds":"Resp (s)",
             "penalty":"Penalty"
         })
+
         st.dataframe(df_show, use_container_width=True)
 
         total_penalty = float(df_raw["penalty"].sum())
+
 
     score_after_penalty = actual_total - total_penalty
 
