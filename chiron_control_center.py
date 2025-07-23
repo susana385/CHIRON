@@ -2434,6 +2434,8 @@ def page_individual_results():
             return res.data or []
         except Exception:
             return []
+        
+    st.write("DBG max_scores for my role:", dbg)
 
     max_rows = fetch_role_maxes(dm_role, scenario_code)
     if not max_rows:
