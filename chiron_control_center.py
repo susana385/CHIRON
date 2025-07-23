@@ -2416,17 +2416,17 @@ def page_team_results():
         st.session_state["team_pdf_url"]   = url
         st.session_state["team_pdf_bytes"] = pdf_bytes
 
-    if st.session_state.get("team_pdf_url"):
-        st.success("📤 Team report saved to Database.")
-        st.markdown(f"[View team report]({st.session_state['team_pdf_url']})")
+        if st.session_state.get("team_pdf_url"):
+            st.success("📤 Team report saved to Database.")
+            st.markdown(f"[View team report]({st.session_state['team_pdf_url']})")
 
-    st.download_button(
-        "⬇️ Download Team Report",
-        data=st.session_state.get("team_pdf_bytes", b""),
-        file_name=f"{sim_name.replace(' ','_')}_team_report.pdf",
-        mime="application/pdf",
-        disabled=st.session_state.get("team_pdf_bytes") is None
-    )
+        st.download_button(
+            "⬇️ Download Team Report",
+            data=st.session_state.get("team_pdf_bytes", b""),
+            file_name=f"{sim_name.replace(' ','_')}_team_report.pdf",
+            mime="application/pdf",
+            disabled=st.session_state.get("team_pdf_bytes") is None
+        )
 
     
     if st.button("🏠 Main Menu"):
@@ -2845,18 +2845,18 @@ def page_individual_results():
         st.session_state["ind_pdf_url"]   = url
         st.session_state["ind_pdf_bytes"] = pdf_bytes  # optional keep for download button
 
-    # Show link/download
-    if st.session_state.get("ind_pdf_url"):
-        st.success("📤 Individual report saved to Database.")
-        st.markdown(f"[Open report]({st.session_state['ind_pdf_url']})")
+        # Show link/download
+        if st.session_state.get("ind_pdf_url"):
+            st.success("📤 Individual report saved to Database.")
+            st.markdown(f"[Open report]({st.session_state['ind_pdf_url']})")
 
-    st.download_button(
-        "⬇️ Download PDF",
-        data=st.session_state.get("ind_pdf_bytes", b""),
-        file_name=file_name,
-        mime="application/pdf",
-        disabled=st.session_state.get("ind_pdf_bytes") is None
-    )
+        st.download_button(
+            "⬇️ Download PDF",
+            data=st.session_state.get("ind_pdf_bytes", b""),
+            file_name=file_name,
+            mime="application/pdf",
+            disabled=st.session_state.get("ind_pdf_bytes") is None
+        )
 
     if st.button("🏠 Main Menu"):
         nav_to("welcome")        
