@@ -1956,35 +1956,37 @@ def page_certify_and_results():
             return
 
 def upload_pdf_to_storage(pdf_bytes: bytes, filename: str, bucket: str = "reports") -> str | None:
+    """Return public URL or None."""
+    storage = supabase.storage.from_(bucket)
+
+    # 1) try native upload (some SDKs accept upsert, some don't)
     try:
-        # 1) upload (no bools inside file_options)
-        supabase.storage.from_(bucket).upload(
+        storage.upload(
             path=filename,
             file=pdf_bytes,
-            file_options={"content-type": "application/pdf"},  # all values must be str/bytes
-            upsert=True  # <-- this param is supported by python-supabase 2.x
+            file_options={"content-type": "application/pdf"},  # must be str/bytes
+            upsert=True  # safe to leave; except TypeError below
         )
     except TypeError:
-        # your SDK might NOT support 'upsert' kwarg; do a safe re-upload:
+        # SDK doesn't support `upsert`; overwrite manually
         try:
-            # try to delete then upload
-            supabase.storage.from_(bucket).remove([filename])
-            supabase.storage.from_(bucket).upload(
+            storage.remove([filename])          # needs DELETE policy
+            storage.upload(
                 path=filename,
                 file=pdf_bytes,
-                file_options={"content-type": "application/pdf"}
+                file_options={"content-type": "application/pdf"},
             )
-        except Exception as e2:
+        except Exception:
             return None
-    except Exception as e:
+    except Exception:
         return None
 
     # 2) public URL
     try:
-        return supabase.storage.from_(bucket).get_public_url(filename)
-    except Exception as e:
-        st.warning(f"Uploaded but failed to get URL: {e}")
+        return storage.get_public_url(filename)
+    except Exception:
         return None
+
 
 
 
