@@ -1975,10 +1975,8 @@ def upload_pdf_to_storage(pdf_bytes: bytes, filename: str, bucket: str = "report
                 file_options={"content-type": "application/pdf"}
             )
         except Exception as e2:
-            st.error(f"❌ Could not upload PDF to storage: {e2}")
             return None
     except Exception as e:
-        st.error(f"❌ Could not upload PDF to storage: {e}")
         return None
 
     # 2) public URL
@@ -2193,6 +2191,26 @@ def page_team_results():
     st.subheader("📊 Team Scores vs Maximum")
     st.dataframe(df_team_vs_max, use_container_width=True)
 
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    cats   = df_team_vs_max["Category"].tolist()
+    scores = df_team_vs_max["Team Score"].tolist()
+    maxes  = df_team_vs_max["Max Score"].tolist()
+
+    x = np.arange(len(cats))
+    width = 0.35
+    fig_team_scores, ax = plt.subplots(figsize=(6,3))            # <<< NEW
+    ax.bar(x - width/2, scores, width, label="Team")
+    ax.bar(x + width/2, maxes,  width, label="Max")
+    ax.set_xticks(x)
+    ax.set_xticklabels(cats, rotation=30, ha="right", fontsize=8)
+    ax.set_ylabel("Points")
+    ax.legend(fontsize=8)
+    fig_team_scores.tight_layout()
+
+    st.pyplot(fig_team_scores, use_container_width=True)
+
     # ---------- TEAM assessments ----------
     @st.cache_data(ttl=10)
     def fetch_teamwork_all(sim_id_):
@@ -2204,10 +2222,10 @@ def page_team_results():
         return res.data or []
 
     tw_rows = fetch_teamwork_all(sim_id)
+    team_figs = [] 
 
     if not tw_rows:
         st.info("No TEAM assessments found.")
-        team_figs = []
     else:
         st.subheader("🔹 TEAM Assessments (by crew)")
         TW_LABELS = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
@@ -2229,6 +2247,7 @@ def page_team_results():
             ax.legend(fontsize=6)
             fig.tight_layout()
             figs.append((fig, row))
+            team_figs.append((f"TEAM – {row['team']}", fig))
 
         # show side-by-side (3 per row)
         cols = st.columns(min(3, len(figs)))
@@ -2259,6 +2278,8 @@ def page_team_results():
 
     if not tlx_rows:
         st.info("No TLX responses to aggregate.")
+        fig_team_radar = None      
+        fig_role_radar = None 
     else:
         import numpy as np, pandas as pd, matplotlib.pyplot as plt
 
@@ -2301,19 +2322,33 @@ def page_team_results():
             fig_role = _radar(role_vals, picked)
             st.pyplot(fig_role, use_container_width=True)
 
+    figs_to_embed = [("Team Scores vs Max", fig_team_scores)]
+    figs_to_embed.extend(team_figs)          # from TEAM assessments
+
+    from reportlab.platypus import Image as RLImage
+    import io
+
+    def fig_to_rl_image(fig, width=460):
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+        buf.seek(0)
+        img = RLImage(buf)
+        w, h = img.wrap(0, 0)
+        scale = width / w
+        img._restrictSize(width, h*scale)
+        return img
 
 
     # ---------- PDF ----------
-    def build_team_pdf(df_scores: pd.DataFrame,
-                       team_rows: list[dict],
-                       scenario_code_: str,
-                       sim_name_: str) -> io.BytesIO:
+    def build_team_pdf(df_scores, team_rows, scenario_code, sim_name,
+                   figs_to_embed):
         from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                        Table as RLTable, TableStyle)
+                                        Table as RLTable, TableStyle, PageBreak)
         from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib import colors
         from reportlab.lib.pagesizes import letter
+        from reportlab.lib import colors
         from reportlab.lib.colors import HexColor
+        import io
 
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=letter)
@@ -2321,60 +2356,57 @@ def page_team_results():
 
         elems = [
             Paragraph("Team Performance Report", styles["Title"]),
-            Paragraph(f"Simulation: {sim_name_}", styles["Normal"]),
-            Paragraph(f"Scenario Code: {scenario_code_}", styles["Normal"]),
+            Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
+            Paragraph(f"Scenario Code: {scenario_code}", styles["Normal"]),
             Spacer(1, 12),
             Paragraph("Team Scores vs Maximum", styles["Heading2"])
         ]
 
+        # table
         data = [df_scores.columns.tolist()] + df_scores.values.tolist()
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), HexColor("#1F4E78")),
-            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
-            ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
-            ("ALIGN", (1,1), (-1,-1), "CENTER"),
+            ("BACKGROUND",(0,0),(-1,0),HexColor("#1F4E78")),
+            ("TEXTCOLOR",(0,0),(-1,0),colors.white),
+            ("GRID",(0,0),(-1,-1),0.25,colors.grey),
+            ("BACKGROUND",(0,1),(-1,-1),colors.whitesmoke),
+            ("ALIGN",(1,1),(-1,-1),"CENTER"),
         ]))
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
-        # TEAM rows
+        # charts
+        for title, fig in figs_to_embed:
+            elems.append(Paragraph(title, styles["Heading3"]))
+            elems.append(fig_to_rl_image(fig, width=460))
+            elems.append(Spacer(1, 12))
+
+        # TEAM assessments text (as you already had)
         if team_rows:
+            elems.append(PageBreak())
             elems.append(Paragraph("TEAM Assessments", styles["Heading2"]))
             TW_MAX = {"leadership": 8, "teamwork": 28, "task_management": 8,
-                      "overall_performance": 10, "total": 54}
-
+                    "overall_performance": 10, "total": 54}
             for row in team_rows:
                 elems.append(Paragraph(f"<b>{row['team']}</b>", styles["Heading3"]))
                 txt = (f"Leadership: {row['leadership']} / {TW_MAX['leadership']}, "
-                       f"Teamwork: {row['teamwork']} / {TW_MAX['teamwork']}, "
-                       f"Task Mgmt: {row['task_management']} / {TW_MAX['task_management']}, "
-                       f"Overall: {row['overall_performance']} / {TW_MAX['overall_performance']}, "
-                       f"Total: {row['total']} / {TW_MAX['total']}")
+                    f"Teamwork: {row['teamwork']} / {TW_MAX['teamwork']}, "
+                    f"Task Mgmt: {row['task_management']} / {TW_MAX['task_management']}, "
+                    f"Overall: {row['overall_performance']} / {TW_MAX['overall_performance']}, "
+                    f"Total: {row['total']} / {TW_MAX['total']}")
                 elems.append(Paragraph(txt, styles["Normal"]))
                 if row.get("comments"):
                     elems.append(Paragraph(f"Comments: {row['comments']}", styles["Italic"]))
                 elems.append(Spacer(1, 6))
 
-            if len(team_rows) > 1:
-                elems.append(Spacer(1, 12))
-                elems.append(Paragraph("Combined Averages", styles["Heading3"]))
-                avg = lambda k: round(sum(r[k] for r in team_rows)/len(team_rows), 2)
-                avg_txt = (f"Leadership: {avg('leadership')} / {TW_MAX['leadership']}, "
-                           f"Teamwork: {avg('teamwork')} / {TW_MAX['teamwork']}, "
-                           f"Task Mgmt: {avg('task_management')} / {TW_MAX['task_management']}, "
-                           f"Overall: {avg('overall_performance')} / {TW_MAX['overall_performance']}, "
-                           f"Total: {avg('total')} / {TW_MAX['total']}")
-                elems.append(Paragraph(avg_txt, styles["Normal"]))
-
         doc.build(elems)
         buf.seek(0)
         return buf
 
+
     # --- AUTO TEAM PDF UPLOAD (run once) ---
     if "team_pdf_url" not in st.session_state:
-        pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
+        pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name, figs_to_embed)
         pdf_bytes  = pdf_buffer.getvalue()
 
         team_name  = sim_name.replace(" ", "_") or f"sim_{sim_id}"
@@ -2385,7 +2417,7 @@ def page_team_results():
         st.session_state["team_pdf_bytes"] = pdf_bytes
 
     if st.session_state.get("team_pdf_url"):
-        st.success("📤 Team report saved to Supabase.")
+        st.success("📤 Team report saved to Database.")
         st.markdown(f"[View team report]({st.session_state['team_pdf_url']})")
 
     st.download_button(
@@ -2443,6 +2475,20 @@ def fetch_my_answers_full(sim_id: int, part_id: int):
         .execute()
     ).data or []
 
+from reportlab.platypus import Image as RLImage
+import io
+
+def fig_to_rl_image(fig, width=480):
+    """Return a ReportLab Image from a matplotlib figure."""
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+    buf.seek(0)
+    img = RLImage(buf)
+    # scale keeping aspect ratio
+    w, h = img.wrap(0, 0)
+    scale = width / w
+    img._restrictSize(width, h * scale)
+    return img
 
 
 def page_individual_results():
@@ -2663,6 +2709,7 @@ def page_individual_results():
         ax_med.legend(fontsize=8)
         fig_med.tight_layout()
         st.pyplot(fig_med, use_container_width=True)
+        fig_med_obj = fig_med 
 
     with col_proc:
         st.subheader("⚙️ Procedural Knowledge")
@@ -2680,6 +2727,7 @@ def page_individual_results():
         ax_proc.legend(fontsize=8)
         fig_proc.tight_layout()
         st.pyplot(fig_proc, use_container_width=True)
+        fig_proc_obj  = fig_proc 
 
     # ---------- Summary table ----------
     col_table, col_tlx = st.columns(2)
@@ -2723,23 +2771,26 @@ def page_individual_results():
             ax_tlx.set_ylim(0, max(vals_wrap)*1.1 if any(vals_wrap) else 1)
             fig_tlx.tight_layout()
             st.pyplot(fig_tlx, use_container_width=True)
+            fig_tlx_obj  = fig_tlx 
         else:
             st.info("No TLX responses submitted.")
 
     # ---------- PDF ----------
     st.markdown("---")
-    def build_pdf():
+    def build_pdf(fig_med_obj, fig_proc_obj, fig_tlx_obj, df_summary,
+              sim_name, dm_role, scenario_code):
         from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                        Table as RLTable, TableStyle)
+                                        Table as RLTable, TableStyle, PageBreak)
         from reportlab.lib.styles import getSampleStyleSheet
         from reportlab.lib.pagesizes import letter
         from reportlab.lib import colors
         from reportlab.lib.colors import HexColor
-        import io as _io
+        import io
 
-        buf = _io.BytesIO()
+        buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=letter)
         styles = getSampleStyleSheet()
+
         elems = [
             Paragraph("Individual Performance Report", styles["Title"]),
             Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
@@ -2749,6 +2800,7 @@ def page_individual_results():
             Paragraph("Score Summary", styles["Heading2"])
         ]
 
+        # table
         data = [df_summary.columns.tolist()] + df_summary.values.tolist()
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
@@ -2761,21 +2813,32 @@ def page_individual_results():
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
-        if tlx_row:
-            elems.append(Paragraph("TLX Scores", styles["Heading2"]))
-            tlx_text = ", ".join(f"{k.title()}: {v}" for k,v in tlx_row.items())
-            elems.append(Paragraph(tlx_text, styles["Normal"]))
-            elems.append(Spacer(1,12))
+        # charts
+        elems.append(Paragraph("Charts", styles["Heading2"]))
+        elems.append(Paragraph("Medical Knowledge vs Max", styles["Heading3"]))
+        elems.append(fig_to_rl_image(fig_med_obj, width=460))
+        elems.append(Spacer(1, 12))
+
+        elems.append(Paragraph("Procedural Knowledge vs Max", styles["Heading3"]))
+        elems.append(fig_to_rl_image(fig_proc_obj, width=460))
+        elems.append(Spacer(1, 12))
+
+        if fig_tlx_obj is not None:
+            elems.append(Paragraph("NASA TLX Radar", styles["Heading3"]))
+            elems.append(fig_to_rl_image(fig_tlx_obj, width=360))
+            elems.append(Spacer(1, 12))
 
         doc.build(elems)
         buf.seek(0)
         return buf
 
+
     # --- AUTO PDF UPLOAD (run once) ---
     if "ind_pdf_url" not in st.session_state:
-        pdf_buf   = build_pdf()                 # your existing builder returns BytesIO
+        pdf_buf = build_pdf(fig_med_obj, fig_proc_obj, fig_tlx_obj if tlx_row else None,
+                    df_summary, sim_name, dm_role, scenario_code)                # your existing builder returns BytesIO
         pdf_bytes = pdf_buf.getvalue()
-
+        file_name = f"{sim_name}_{dm_role.replace(' ','_')}_results.pdf"
         out_name = f"sim_{sim_id}/individual/{dm_role.replace(' ','_')}_{part_id}.pdf"
         url = upload_pdf_to_storage(pdf_bytes, out_name)
 
@@ -2784,13 +2847,13 @@ def page_individual_results():
 
     # Show link/download
     if st.session_state.get("ind_pdf_url"):
-        st.success("📤 Individual report saved to Supabase.")
+        st.success("📤 Individual report saved to Database.")
         st.markdown(f"[Open report]({st.session_state['ind_pdf_url']})")
 
     st.download_button(
         "⬇️ Download PDF",
         data=st.session_state.get("ind_pdf_bytes", b""),
-        file_name=f"{dm_role.replace(' ','_')}_results.pdf",
+        file_name=file_name,
         mime="application/pdf",
         disabled=st.session_state.get("ind_pdf_bytes") is None
     )
@@ -3230,17 +3293,29 @@ def page_past_simulations():
             nav_to("welcome")
     
     try:
-        response = (
+        res = (
             supabase
             .from_("simulation")
-            .select("id,name,finished_at")
-            .eq("status", "finished")
+            .select("id,name,status,started_at,finished_at")   # <-- be explicit
+            .eq("status", "finished")                          # or .in_("status", ["finished","archived"])
             .order("finished_at", desc=True)
             .execute()
         )
-        sims = response.data
     except Exception as e:
-        st.error(f"Error loading history: {e}")
+        # Show PostgREST error payload if available
+        import traceback, json
+        st.error("Failed to load simulations.")
+        st.code("".join(traceback.format_exc())[-800:])  # last chars
+        return
+    
+    if getattr(res, "error", None):
+        st.error("Supabase error loading simulations:")
+        st.write(res.error)
+        return
+
+    sims = res.data or []
+    if not sims:
+        st.info("No finished simulations.")
         return
 
     # 2) No completed sims?
