@@ -1978,7 +1978,7 @@ def page_team_results():
         try:
             res = (supabase
                    .from_("simulation")
-                   .select("status,name,certified_at")
+                   .select("status,name")
                    .eq("id", sim_id_)
                    .maybe_single()
                    .execute())
