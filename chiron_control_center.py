@@ -2960,9 +2960,17 @@ def page_running_simulations():
                 # 6) stash and navigate
                 # sanity check:
                 # sanity check
-                if not flat_questions or not isinstance(flat_questions[0], dict):
-                    st.error("⚠️ `all_questions` must be a list of dicts but isn’t – please check your decision blocks.")
-                    return
+                # after computing next_step, dm_stage, current_decision_index, flat_questions
+                is_inject = next_step and next_step.startswith("Inject")
+
+                if not is_inject:
+                    if not flat_questions or not isinstance(flat_questions[0], dict):
+                        st.error("⚠️ `all_questions` must be a list of dicts but isn’t – please check your decision blocks.")
+                        return
+                else:
+                    flat_questions = []                # make sure it’s empty for injects
+                    current_decision_index = None
+
                 
                 # st.write("DEBUG chosen next_step:", next_step)
                 # st.write("DEBUG dm_stage, current_decision_index:", dm_stage, current_decision_index)
