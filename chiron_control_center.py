@@ -2207,8 +2207,9 @@ def page_team_results():
                 st.write(f"- Total: **{row['total']}** / 54")
                 if row.get("comments"):
                     st.write(f"_Comments:_ {row['comments']}")
-                    
+
     # ---------- NASA TLX (combined radar) ----------
+    # ---------- NASA TLX (team avg + role picker) ----------
     @st.cache_data(ttl=10)
     def fetch_tlx_all(sim_id_):
         return (
@@ -2224,56 +2225,47 @@ def page_team_results():
     if not tlx_rows:
         st.info("No TLX responses to aggregate.")
     else:
-        import numpy as np
-        import pandas as pd
-        import matplotlib.pyplot as plt
-
-        df_tlx = pd.DataFrame(tlx_rows)
+        import numpy as np, pandas as pd, matplotlib.pyplot as plt
 
         dims = ["mental","physical","temporal","performance","effort","frustration"]
         nice = [d.title() for d in dims]
 
-        # --- 1) Overall average radar ---
-        avg_vals = df_tlx[dims].mean().tolist()
-        avg_vals += avg_vals[:1]               # close the loop
+        def _radar(values, title, size=(4,4)):
+            # values: list of len(dims)
+            vals = values + values[:1]
+            angles = np.linspace(0, 2*np.pi, len(dims), endpoint=False).tolist()
+            angles += angles[:1]
+            fig, ax = plt.subplots(subplot_kw={"polar": True}, figsize=size)
+            ax.plot(angles, vals, linewidth=2)
+            ax.fill(angles, vals, alpha=0.25)
+            ax.set_xticks(angles[:-1])
+            ax.set_xticklabels(nice, fontsize=8)
+            ax.set_ylim(0, 20)
+            ax.set_title(title, fontsize=10)
+            fig.tight_layout()
+            return fig
 
-        angles = np.linspace(0, 2*np.pi, len(dims), endpoint=False).tolist()
-        angles += angles[:1]
+        df_tlx = pd.DataFrame(tlx_rows)
 
-        fig_all, ax_all = plt.subplots(subplot_kw={"polar": True}, figsize=(4,4))
-        ax_all.plot(angles, avg_vals, linewidth=2)
-        ax_all.fill(angles, avg_vals, alpha=0.25)
-        ax_all.set_xticks(angles[:-1])
-        ax_all.set_xticklabels(nice, fontsize=8)
-        ax_all.set_ylim(0, 20)
-        ax_all.set_title("NASA TLX – Team Average", fontsize=10)
-        fig_all.tight_layout()
+        # Left: team average
+        team_avg = df_tlx[dims].mean().tolist()
 
-        # --- 2) Per-role radar (optional) ---
-        # If you want one radar per role, uncomment below
-        figs_roles = []
-        for role, grp in df_tlx.groupby("participant_role"):
-            vals = grp[dims].mean().tolist()
-            vals += vals[:1]
-            fig_r, ax_r = plt.subplots(subplot_kw={"polar": True}, figsize=(3.6,3.6))
-            ax_r.plot(angles, vals, linewidth=2)
-            ax_r.fill(angles, vals, alpha=0.20)
-            ax_r.set_xticks(angles[:-1])
-            ax_r.set_xticklabels(nice, fontsize=7)
-            ax_r.set_ylim(0, 20)
-            ax_r.set_title(role, fontsize=8)
-            fig_r.tight_layout()
-            figs_roles.append(fig_r)
+        col_left, col_right = st.columns([1,1])
 
-        st.subheader("🧠 NASA TLX (Workload)")
-        col_all = st.columns([1,2])[0]
-        col_all.pyplot(fig_all, use_container_width=True)
+        with col_left:
+            st.subheader("🧠 TLX – Team Average")
+            fig_team = _radar(team_avg, "Team Average")
+            st.pyplot(fig_team, use_container_width=True)
 
-        # show roles 3 per row
-        if figs_roles:
-            cols = st.columns(3)
-            for i, fig in enumerate(figs_roles):
-                cols[i % 3].pyplot(fig, use_container_width=True)
+        # Right: role picker
+        roles = sorted(df_tlx["participant_role"].dropna().unique().tolist())
+        with col_right:
+            st.subheader("🔍 TLX – By Role")
+            picked = st.selectbox("Choose a role", roles, index=0)
+            role_vals = df_tlx[df_tlx["participant_role"] == picked][dims].mean().tolist()
+            fig_role = _radar(role_vals, picked)
+            st.pyplot(fig_role, use_container_width=True)
+
 
 
     # ---------- PDF ----------
