@@ -2405,32 +2405,41 @@ def page_team_results():
 
 
     # --- AUTO TEAM PDF UPLOAD (run once) ---
-    if "team_pdf_url" not in st.session_state:
-        pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name, figs_to_embed)
-        pdf_bytes  = pdf_buffer.getvalue()
+    # ---------- PDF (build & auto-upload once) ----------
+    st.markdown("---")
 
-        team_name  = sim_name.replace(" ", "_") or f"sim_{sim_id}"
-        out_name   = f"sim_{sim_id}/team/{team_name}_team_report.pdf"
-        url = upload_pdf_to_storage(pdf_bytes, out_name)
+    # 1) Build the PDF every run so variables exist
+    pdf_team_buf = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
+    team_file_name = f"{sim_name.replace(' ','_')}_team_report.pdf"
 
-        st.session_state["team_pdf_url"]   = url
-        st.session_state["team_pdf_bytes"] = pdf_bytes
+    # 2) Auto-upload to Supabase Storage only once per session
+    if not st.session_state.get("_team_pdf_uploaded"):
+        try:
+            supabase.storage \
+                .from_("reports") \
+                .upload(
+                    path=f"team/{sim_id}/{team_file_name}",
+                    file=pdf_team_buf.getvalue(),
+                    file_options={"content-type": "application/pdf", "upsert": True}
+                )
+            st.session_state["_team_pdf_uploaded"] = True
+        except Exception as e:
+            st.warning(f"Could not upload team PDF: {e}")
 
-        if st.session_state.get("team_pdf_url"):
-            st.success("📤 Team report saved to Database.")
-            st.markdown(f"[View team report]({st.session_state['team_pdf_url']})")
-
+    # 3) UI buttons
+    col_pdf, col_nav = st.columns([1,1])
+    with col_pdf:
         st.download_button(
-            "⬇️ Download Team Report",
-            data=st.session_state.get("team_pdf_bytes", b""),
-            file_name=f"{sim_name.replace(' ','_')}_team_report.pdf",
+            "⬇️ Download Team PDF",
+            data=pdf_team_buf,
+            file_name=team_file_name,
             mime="application/pdf",
-            disabled=st.session_state.get("team_pdf_bytes") is None
+            key="dl_team_pdf"
         )
+    with col_nav:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")
 
-    
-    if st.button("🏠 Main Menu"):
-        nav_to("welcome")
 
 
 
@@ -2834,32 +2843,39 @@ def page_individual_results():
 
 
     # --- AUTO PDF UPLOAD (run once) ---
-    if "ind_pdf_url" not in st.session_state:
-        pdf_buf = build_pdf(fig_med_obj, fig_proc_obj, fig_tlx_obj if tlx_row else None,
-                    df_summary, sim_name, dm_role, scenario_code)                # your existing builder returns BytesIO
-        pdf_bytes = pdf_buf.getvalue()
-        file_name = f"{sim_name}_{dm_role.replace(' ','_')}_results.pdf"
-        out_name = f"sim_{sim_id}/individual/{dm_role.replace(' ','_')}_{part_id}.pdf"
-        url = upload_pdf_to_storage(pdf_bytes, out_name)
+    # ---------- PDF ----------
+    st.markdown("---")
 
-        st.session_state["ind_pdf_url"]   = url
-        st.session_state["ind_pdf_bytes"] = pdf_bytes  # optional keep for download button
+    # Always build the buffer & filename (cheap enough and solves UnboundLocalError)
+    pdf_buf   = build_pdf()
+    file_name = f"{sim_name.replace(' ','_')}_{dm_role.replace(' ','_')}_results.pdf"
 
-        # Show link/download
-        if st.session_state.get("ind_pdf_url"):
-            st.success("📤 Individual report saved to Database.")
-            st.markdown(f"[Open report]({st.session_state['ind_pdf_url']})")
+    # (Optional) auto‑upload once
+    if not st.session_state.get("_ind_pdf_uploaded"):
+        try:
+            supabase.storage \
+                .from_("reports") \
+                .upload(
+                    path=f"individual/{sim_id}/{file_name}",
+                    file=pdf_buf.getvalue(),
+                    file_options={"content-type": "application/pdf", "upsert": True}
+                )
+            st.session_state["_ind_pdf_uploaded"] = True
+        except Exception as e:
+            st.warning(f"Could not upload PDF: {e}")
 
+    col_pdf, col_nav = st.columns([1,1])
+    with col_pdf:
         st.download_button(
             "⬇️ Download PDF",
-            data=st.session_state.get("ind_pdf_bytes", b""),
+            data=pdf_buf,
             file_name=file_name,
             mime="application/pdf",
-            disabled=st.session_state.get("ind_pdf_bytes") is None
+            key="dl_ind_pdf"
         )
-
-    if st.button("🏠 Main Menu"):
-        nav_to("welcome")        
+    with col_nav:
+        if st.button("🏠 Main Menu"):
+            nav_to("welcome")       
 
 
 
