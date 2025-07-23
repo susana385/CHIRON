@@ -2932,8 +2932,10 @@ def page_running_simulations():
                         dm_stage = 13                      # “all done”
                     else:
                         dm_stage = 12                      # go to TLX
-                    current_decision_index = None
-                    flat_questions = []
+                        st.session_state.all_questions = []          # no questions at an inject
+                        st.session_state.current_decision_index = None
+                        st.session_state.dm_stage = dm_stage
+                        st.session_state._stage_locked = True
                     # lock & stash
                     st.session_state.all_questions = []
                     st.session_state.current_decision_index = None
