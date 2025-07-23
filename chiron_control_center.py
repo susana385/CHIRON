@@ -2208,25 +2208,6 @@ def page_team_results():
                 if row.get("comments"):
                     st.write(f"_Comments:_ {row['comments']}")
 
-        # Combined averages
-        if len(tw_rows) >= 2:
-            avg_vals = [
-                round(sum(r[k] for r in tw_rows) / len(tw_rows), 2)
-                for k in TW_KEYS
-            ]
-            st.markdown("### Combined Averages (all crews)")
-            x = np.arange(len(TW_LABELS))
-            width = 0.35
-            fig_avg, ax_avg = plt.subplots(figsize=(4,3))
-            ax_avg.bar(x - width/2, avg_vals, width, label="Average Score")
-            ax_avg.bar(x + width/2, TW_MAXES, width, label="Max")
-            ax_avg.set_xticks(x)
-            ax_avg.set_xticklabels(TW_LABELS, fontsize=8)
-            ax_avg.set_ylabel("Points")
-            ax_avg.legend(fontsize=6)
-            fig_avg.tight_layout()
-            st.pyplot(fig_avg, use_container_width=True)
-
     # ---------- PDF ----------
     def build_team_pdf(df_scores: pd.DataFrame,
                        team_rows: list[dict],
