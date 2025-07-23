@@ -1955,52 +1955,62 @@ def page_certify_and_results():
             nav_to("team_results")
             return
 
-def upload_pdf_to_storage(pdf_bytes: bytes,
-                          filename: str,
-                          bucket: str = "reports") -> tuple[bool, str | None, str]:
+def upload_pdf_to_storage(pdf_bytes: bytes, filename: str, bucket: str = "reports"):
     """
-    Returns (ok, public_url, debug_msg)
+    Upload pdf_bytes to storage at `bucket/filename`.
+    Returns (ok: bool, public_url: str|None, debug: str)
     """
     storage = supabase.storage.from_(bucket)
     debug = []
 
-    # sanitize path (no leading slash)
+    # normalize
     filename = filename.lstrip("/")
 
-    # Try native upload (most 2.x SDKs accept these kwargs)
+    # 1) try native upsert
     try:
-        debug.append("try upload(upsert=True)")
+        debug.append("→ upload(upsert=True)")
         storage.upload(
             path=filename,
             file=pdf_bytes,
             file_options={"content-type": "application/pdf"},
             upsert=True
         )
-    except TypeError as e:  # SDK doesn't know 'upsert'
-        debug.append(f"TypeError on upload: {e}")
+    except TypeError as e:
+        debug.append(f" ✖ upload(upsert) TypeError: {e}")
+        # fallback: delete + upload
         try:
-            debug.append("remove old then upload")
-            storage.remove([filename])   # needs RLS delete
+            debug.append("→ remove(old)")
+            storage.remove([filename])
+        except Exception as e2:
+            debug.append(f" ✖ remove(): {e2}")
+        try:
+            debug.append("→ upload(replace)")
             storage.upload(
                 path=filename,
                 file=pdf_bytes,
                 file_options={"content-type": "application/pdf"}
             )
-        except Exception as e2:
-            debug.append(f"2nd upload failed: {repr(e2)}")
-            return False, None, "\n".join(debug)
+        except Exception as e3:
+            msg = str(e3)
+            debug.append(f" ✖ upload() after remove: {msg}")
+            # if it's Duplicate, treat as success
+            if "Duplicate" in msg:
+                debug.append("   • treating Duplicate as OK")
+            else:
+                return False, None, "\n".join(debug)
     except Exception as e:
-        debug.append(f"upload failed: {repr(e)}")
+        debug.append(f" ✖ upload(upsert) failed: {repr(e)}")
         return False, None, "\n".join(debug)
 
-    # Get public URL
+    # 2) get the public URL
     try:
         url = storage.get_public_url(filename)
-        debug.append(f"public url: {url}")
+        debug.append(f"✓ public_url={url}")
         return True, url, "\n".join(debug)
     except Exception as e:
-        debug.append(f"get_public_url failed: {repr(e)}")
+        debug.append(f" ✖ get_public_url: {e}")
         return False, None, "\n".join(debug)
+
 
 
 def page_team_results():
