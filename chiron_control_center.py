@@ -2445,7 +2445,7 @@ def page_team_results():
             supabase.storage.from_("reports").upload(
                 path=f"team/{sim_id}/{team_filename}",
                 file=pdf_team_buf.getvalue(),
-                file_options={"content-type": "application/pdf", "upsert": True}
+                file_options={"content-type": "application/pdf", "upsert": "true"}
             )
             st.session_state["_team_pdf_uploaded"] = True
         except Exception as e:
@@ -2883,7 +2883,7 @@ def page_individual_results():
             supabase.storage.from_("reports").upload(
                 path=f"individual/{sim_id}/{file_name}",
                 file=pdf_buf.getvalue(),   # bytes!
-                file_options={"content-type": "application/pdf", "upsert": True}
+                file_options={"content-type": "application/pdf", "upsert": "true"}
             )
             st.session_state["_ind_pdf_uploaded"] = True
         except Exception as e:
