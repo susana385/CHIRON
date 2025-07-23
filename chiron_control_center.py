@@ -2479,21 +2479,20 @@ def page_individual_results():
 
     # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.markdown("---")
+    # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.subheader("📝 Your Raw Answers")
 
-    # 1) Filter this participant
     my_answers = [a for a in answers_cache
                 if a["id_simulation"] == sim_id
                 and a["id_participant"] == part_id]
 
     import pandas as pd, re
 
-    if not my_answers:
+    df_raw = pd.DataFrame(my_answers) if my_answers else pd.DataFrame()
+
+    if df_raw.empty:
         st.info("No answers recorded yet.")
     else:
-        df_raw = pd.DataFrame(my_answers)
-
-        # 2) Normalize order for sorting
         ORDER = [
             "Initial Situation","Inject 1",
             *[f"Decision {i}" for i in range(1,14)],
@@ -2505,26 +2504,25 @@ def page_individual_results():
             *[f"Decision {i}" for i in range(29,35)],
             *[f"Decision {i}" for i in range(35,44)],
         ]
-
         def norm(lbl):
             m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", str(lbl))
             return m.group(1) if m else str(lbl)
 
-        df_raw["prefix"] = df_raw["inject"].map(norm)
+        df_raw["prefix"]   = df_raw["inject"].map(norm)
         df_raw["order_no"] = pd.Categorical(df_raw["prefix"], ORDER, ordered=True)
-        df_raw = df_raw.sort_values("order_no").drop(columns=["order_no"])
+        df_raw = df_raw.sort_values("order_no").drop(columns=["order_no","prefix"])
 
-        # 3) Columns to show (only if they exist)
-        cols = ["inject","answer_text","response_seconds","penalty",
-                "basic_life_support","primary_survey","secondary_survey",
-                "definitive_care","crew_roles_communication","systems_procedural_knowledge"]
-        cols = [c for c in cols if c in df_raw.columns]
+        wanted_cols = ["inject","answer_text","response_seconds","penalty",
+                    "basic_life_support","primary_survey","secondary_survey",
+                    "definitive_care","crew_roles_communication","systems_procedural_knowledge"]
+        show_cols = [c for c in wanted_cols if c in df_raw.columns]
 
-        st.dataframe(df_raw[cols], use_container_width=True)
+        st.dataframe(df_raw[show_cols], use_container_width=True)
 
-            # totals for penalty/score-after-penalty (if you use them later)
-    total_penalty = float(df_raw["penalty"].sum())
+    # Safe penalty/seconds totals
+    total_penalty = float(df_raw.get("penalty", pd.Series(dtype=float)).fillna(0).sum())
     score_after_penalty = actual_total - total_penalty
+
 
     # ---------- Charts ----------
     col_med, col_proc = st.columns(2)
