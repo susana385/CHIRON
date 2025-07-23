@@ -2915,10 +2915,12 @@ def page_running_simulations():
                     current_decision_index = None
                     flat_questions = []
                 elif next_step.startswith("Inject"):
-                    # e.g. "Inject 2" → stage 3
-                    dm_stage = int(next_step.split()[1]) + 1
-                    current_decision_index = None
-                    flat_questions = []
+                    inj_no = int(next_step.split()[1])          # "Inject 3" -> 3
+                    dm_stage = {1:1, 2:3, 3:5, 4:7}[inj_no]      # your own mapping
+                    st.session_state.all_questions = []          # no questions at an inject
+                    st.session_state.current_decision_index = None
+                    st.session_state.dm_stage = dm_stage
+                    st.session_state._stage_locked = True 
 
                 else:
                     # it really is a Decision X
