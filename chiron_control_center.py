@@ -2437,29 +2437,23 @@ def page_team_results():
                                 png_team_scores, png_team_avg_tlx,
                                 png_role_tlx_all, png_team_figs)
 
-    team_filename = f"{sim_name.replace(' ','_')}_team_report.pdf"
+    team_filename = f"team/{sim_id}/{sim_name.replace(' ','_')}_team_report.pdf"
 
-    # auto-upload once
     if not st.session_state.get("_team_pdf_uploaded"):
-        try:
-            supabase.storage.from_("reports").upload(
-                path=f"team/{sim_id}/{team_filename}",
-                file=pdf_team_buf.getvalue(),
-                file_options={"content-type": "application/pdf"},
-                upsert=True
-            )
+        public_url = upload_pdf_to_storage(pdf_team_buf.getvalue(), team_filename)
+        if public_url:
             st.session_state["_team_pdf_uploaded"] = True
-        except Exception as e:
-            st.warning(f"❌ Could not upload team PDF: {e}")
+        else:
+            st.warning("❌ Could not upload team PDF to storage.")
 
-    # download button & nav
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
         st.download_button("⬇️ Download Team PDF",
                         data=pdf_team_buf,
-                        file_name=team_filename,
+                        file_name=team_filename.split('/')[-1],
                         mime="application/pdf",
                         key="dl_team_pdf")
+
     with col_nav:
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
@@ -2874,28 +2868,26 @@ def page_individual_results():
 
     # build once
     pdf_buf = build_pdf(df_summary, sim_name, dm_role, scenario_code,
-                        fig_med_png, fig_proc_png, fig_tlx_png)
+                    fig_med_png, fig_proc_png, fig_tlx_png)
 
-    file_name = f"{sim_name.replace(' ','_')}_{dm_role.replace(' ','_')}_results.pdf"
+    file_name = f"individual/{sim_id}/{sim_name.replace(' ','_')}_{dm_role.replace(' ','_')}_results.pdf"
 
-    # auto-upload once
+    # Auto-upload once
     if not st.session_state.get("_ind_pdf_uploaded"):
-        try:
-            supabase.storage.from_("reports").upload(
-                path=f"individual/{sim_id}/{file_name}",
-                file=pdf_buf.getvalue(),   # bytes!
-                file_options={"content-type": "application/pdf"},
-                upsert=True
-            )
+        public_url = upload_pdf_to_storage(pdf_buf.getvalue(), file_name)
+        if public_url:
             st.session_state["_ind_pdf_uploaded"] = True
-        except Exception as e:
-            st.warning(f"❌ Could not upload PDF to storage: {e}")
+        else:
+            st.warning("❌ Could not upload PDF to storage.")
 
-    # download button
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
-        st.download_button("⬇️ Download PDF", data=pdf_buf, file_name=file_name,
-                        mime="application/pdf", key="dl_ind_pdf")
+        st.download_button("⬇️ Download PDF",
+                        data=pdf_buf,
+                        file_name=file_name.split('/')[-1],
+                        mime="application/pdf",
+                        key="dl_ind_pdf")
+
     with col_nav:
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
