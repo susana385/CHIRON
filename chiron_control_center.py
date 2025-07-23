@@ -2454,11 +2454,13 @@ def page_team_results():
     team_filename = f"team/{sim_id}/{sim_name.replace(' ','_')}_team_report.pdf"
 
     if not st.session_state.get("_team_pdf_uploaded"):
-        public_url = upload_pdf_to_storage(pdf_team_buf.getvalue(), team_filename)
-        if public_url:
+        ok, url, dbg = upload_pdf_to_storage(pdf_team_buf.getvalue(), team_filename)
+        if ok:
             st.session_state["_team_pdf_uploaded"] = True
+            st.success("📤 PDF stored in Database.")
         else:
             st.warning("❌ Could not upload team PDF to storage.")
+            
 
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
