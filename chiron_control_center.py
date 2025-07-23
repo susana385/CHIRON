@@ -2422,6 +2422,7 @@ def page_individual_results():
 
     MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
     PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
+    ALL_CATS = MED_CATS + PROC_CATS
 
     try:
         med_actuals  = [float(ind[c]) for c in MED_CATS]
@@ -2438,11 +2439,11 @@ def page_individual_results():
     def fetch_role_maxes(role_, scen_code):
         try:
             res = (supabase
-                   .from_("max_scores")
-                   .select("category,max_value,scenario_code,role")
-                   .eq("role", role_)
-                   .eq("scenario_code", scen_code)
-                   .execute())
+                .from_("max_scores")
+                .select("category,max_value,scenario_code,role")
+                .eq("role", role_)
+                .eq("scenario_code", scen_code)
+                .execute())
             return res.data or []
         except Exception:
             return []
@@ -2458,14 +2459,15 @@ def page_individual_results():
         "crew_roles_communication":       "crew_roles_communication_total",
         "systems_procedural_knowledge":   "systems_procedural_knowledge_total",
     }
+
+    # Build role_max_map directly
     role_max_map = {r["category"].lower(): float(r["max_value"]) for r in max_rows}
 
-    def cat_max(cat):
-        key = RAW_TO_TOTAL[cat].lower()
-        return role_max_map.get(key, 0.0)
+    def cat_max(cat: str) -> float:
+        return role_max_map.get(RAW_TO_TOTAL[cat].lower(), 0.0)
 
-    med_maxs  = [cat_max(c) for c in MED_CATS]
-    proc_maxs = [cat_max(c) for c in PROC_CATS]
+    med_maxs     = [cat_max(c) for c in MED_CATS]
+    proc_maxs    = [cat_max(c) for c in PROC_CATS]
     med_max_sub  = sum(med_maxs)
     proc_max_sub = sum(proc_maxs)
     max_total    = med_max_sub + proc_max_sub
@@ -2490,6 +2492,18 @@ def page_individual_results():
     # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.markdown("---")
     st.subheader("📝 Your Raw Answers")
+    @st.cache_data(ttl=10)
+    def fetch_my_answers_full(sim_id_, part_id_):
+        res = (supabase
+            .from_("answers")
+            .select("inject,answer_text,response_seconds,penalty,"
+                    "basic_life_support,primary_survey,secondary_survey,"
+                    "definitive_care,crew_roles_communication,systems_procedural_knowledge")
+            .eq("id_simulation", sim_id_)
+            .eq("id_participant", part_id_)
+            .execute())
+        return res.data or []
+
 
     my_answers = fetch_my_answers_full(sim_id, part_id)
 
@@ -2516,7 +2530,10 @@ def page_individual_results():
 
         df_raw["prefix"]   = df_raw["inject"].map(norm)
         df_raw["order_no"] = pd.Categorical(df_raw["prefix"], ORDER, ordered=True)
-        df_raw = df_raw.sort_values("order_no").drop(columns=["order_no","prefix"])
+        df_raw = df_raw.sort_values("order_no")
+        drop_cols = [c for c in ["order_no","prefix"] if c in df_raw.columns]
+        df_raw = df_raw.drop(columns=drop_cols)
+
 
         wanted_cols = ["inject","answer_text","response_seconds","penalty",
                     "basic_life_support","primary_survey","secondary_survey",
