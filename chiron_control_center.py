@@ -3303,7 +3303,7 @@ def page_past_simulations():
             supabase
             .from_("simulation")
             .select("id,name,status,started_at,finished_at")
-            .in_("status", ["finished", "archived"])   # adapt if you only use "finished"
+            .in_("status", "finished")   # adapt if you only use "finished"
             .order("finished_at", desc=True)
             .execute()
         )
