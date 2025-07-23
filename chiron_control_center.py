@@ -2390,7 +2390,7 @@ def page_team_results():
     png_team_scores = fig_to_png(fig_team_scores) if fig_team_scores else None
     png_team_avg_tlx = fig_to_png(fig_team_avg_tlx) if fig_team_avg_tlx else None
     png_role_tlx_all = [(r, fig_to_png(f)) for r, f in fig_role_tlx_map.items()]
-    png_team_figs    = [(title, fig_to_png(fig)) for fig, title, _ in team_figs]
+    png_team_figs = [(title, fig_to_png(fig)) for title, fig in team_figs]
     # ---------- PDF ----------
     from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
                                 Table as RLTable, TableStyle, Image)
