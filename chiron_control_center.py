@@ -2313,12 +2313,22 @@ def page_simulation_menu():
     if st.button("▶️ Go to Teamwork Assessment"):
         nav_to("page_one")
 
-def _norm(lbl: str) -> str:
-    import re
-    if not lbl:
-        return ""
-    m = re.match(r"^(Initial Situation|Inject \d+|Decision \d+)", lbl.strip())
-    return m.group(1) if m else lbl.strip()
+@st.cache_data(ttl=10)
+def fetch_my_answers_full(sim_id: int, part_id: int):
+    return (
+        supabase
+        .from_("answers")
+        .select(
+            "inject,answer_text,"
+            "basic_life_support,primary_survey,secondary_survey,definitive_care,"
+            "crew_roles_communication,systems_procedural_knowledge,"
+            "response_seconds,penalty"
+        )
+        .eq("id_simulation", sim_id)
+        .eq("id_participant", part_id)
+        .execute()
+    ).data or []
+
 
 
 def page_individual_results():
@@ -2479,16 +2489,12 @@ def page_individual_results():
 
     # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.markdown("---")
-    # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.subheader("📝 Your Raw Answers")
 
-    my_answers = [a for a in answers_cache
-                if a["id_simulation"] == sim_id
-                and a["id_participant"] == part_id]
+    my_answers = fetch_my_answers_full(sim_id, part_id)
 
     import pandas as pd, re
-
-    df_raw = pd.DataFrame(my_answers) if my_answers else pd.DataFrame()
+    df_raw = pd.DataFrame(my_answers)
 
     if df_raw.empty:
         st.info("No answers recorded yet.")
@@ -2519,7 +2525,7 @@ def page_individual_results():
 
         st.dataframe(df_raw[show_cols], use_container_width=True)
 
-    # Safe penalty/seconds totals
+    # totals for penalties
     total_penalty = float(df_raw.get("penalty", pd.Series(dtype=float)).fillna(0).sum())
     score_after_penalty = actual_total - total_penalty
 
