@@ -3008,7 +3008,7 @@ def page_running_simulations():
                     return
                 
 
-                nav_to("dm_questionnaire")
+                #nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
