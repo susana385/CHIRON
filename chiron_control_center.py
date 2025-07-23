@@ -2424,20 +2424,27 @@ def page_individual_results():
     # --- Fetch role-specific max scores for this scenario (cached) ---
     @st.cache_data(ttl=10)
     def fetch_role_maxes(role_, scen_code):
+        role_norm = role_.strip()
+        scen_norm = scen_code.strip().lower()
         try:
-            res = (supabase
-                   .from_("max_scores")
-                   .select("category, max_value, scenario_code, role")
-                   .eq("role", role_)
-                   .eq("scenario_code", scen_code)  # use ilike if needed
-                   .execute())
+            q = (supabase
+                .from_("max_scores")
+                .select("category,max_value,scenario_code,role")
+                .ilike("role", role_norm)              # tolerate small diffs
+                .ilike("scenario_code", scen_norm))    # e.g. 'c7,b13,%'
+            res = q.execute()
             return res.data or []
-        except Exception:
+        except Exception as e:
+            st.warning(f"max_scores fetch failed: {e}")
             return []
-        
-    st.write("DBG max_scores for my role:", res.data)
 
     max_rows = fetch_role_maxes(dm_role, scenario_code)
+    st.write("DBG max_rows:", max_rows) 
+
+    ROLE_ALIASES = {"FE-3 (EVA2)": "FE-3 (EVA)", "FE-2 (IV1)": "FE-2 (IV1)"}
+    role_for_max = ROLE_ALIASES.get(dm_role, dm_role)
+    max_rows = fetch_role_maxes(role_for_max, scenario_code)
+
     if not max_rows:
         st.warning("No max_scores found for your role & scenario. Percentages unavailable.")
     # Map categories (normalize lowercase)
@@ -2551,6 +2558,20 @@ def page_individual_results():
             st.pyplot(fig_tlx, use_container_width=True)
         else:
             st.info("No TLX responses submitted.")
+    # ---- compute total penalty from your raw answers (do this earlier when you build df_raw) ----
+    total_penalty = float(df_raw["penalty"].fillna(0).sum()) if "penalty" in df_raw.columns else 0.0
+    score_after_penalty = actual_total - total_penalty
+
+    # ---- append to the rows list BEFORE building df_summary ----
+    rows += [
+        ["Penalties",          -total_penalty,   "",          ""],
+        ["Total (after pen.)", score_after_penalty, max_total,
+        f"{100*score_after_penalty/max_total:.1f}%" if max_total else "—"]
+    ]
+
+    # now build the dataframe
+    df_summary = pd.DataFrame(rows, columns=["Category", "Your Score", "Max Score", "% of Max"])
+
 
     st.markdown("---")
     st.subheader("📝 Your Raw Answers")
@@ -2565,9 +2586,20 @@ def page_individual_results():
     else:
         # Optional: order by numeric decision/inject sequence if you stored that mapping
         df_raw = pd.DataFrame(my_answers)
-        # Exclude inject steps if you only want decisions
-        df_show = df_raw[~df_raw["inject"].str.startswith("Inject")]
-        st.dataframe(df_show[["inject", "answer_text"]], use_container_width=True)
+# normalize prefix
+        df_raw["prefix"] = df_raw["inject"].str.extract(r'^(Initial Situation|Inject \d+|Decision \d+)')
+
+        # keep ONLY the latest row per prefix (by response_seconds or updated_at if you store it)
+        df_raw = df_raw.sort_values(["response_seconds", "inject"]).drop_duplicates("prefix", keep="last")
+
+        cols = [
+            "inject", "answer_text",
+            "basic_life_support","primary_survey","secondary_survey","definitive_care",
+            "crew_roles_communication","systems_procedural_knowledge",
+            "response_seconds","penalty"
+        ]
+        cols = [c for c in cols if c in df_raw.columns]  # guard
+        st.dataframe(df_raw[cols], use_container_width=True)
 
     # --- PDF (Lazy Build) ---
     def build_pdf():
