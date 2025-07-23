@@ -2275,11 +2275,11 @@ def page_team_results():
         ).data or []
 
     tlx_rows = fetch_tlx_all(sim_id)
+    fig_team_avg_tlx = None
+    fig_role_tlx_map = {}
 
     if not tlx_rows:
         st.info("No TLX responses to aggregate.")
-        fig_team_radar = None      
-        fig_role_radar = None 
     else:
         import numpy as np, pandas as pd, matplotlib.pyplot as plt
 
@@ -2310,17 +2310,21 @@ def page_team_results():
 
         with col_left:
             st.subheader("🧠 TLX – Team Average")
-            fig_team = _radar(team_avg, "Team Average")
-            st.pyplot(fig_team, use_container_width=True)
+            fig_team_avg_tlx = _radar(team_avg, "Team Average")
+            st.pyplot(fig_team_avg_tlx, use_container_width=True)
 
         # Right: role picker
         roles = sorted(df_tlx["participant_role"].dropna().unique().tolist())
         with col_right:
             st.subheader("🔍 TLX – By Role")
+            roles = sorted(df_tlx["participant_role"].dropna().unique().tolist())
             picked = st.selectbox("Choose a role", roles, index=0)
-            role_vals = df_tlx[df_tlx["participant_role"] == picked][dims].mean().tolist()
-            fig_role = _radar(role_vals, picked)
-            st.pyplot(fig_role, use_container_width=True)
+            for r in roles:
+                r_vals = df_tlx[df_tlx["participant_role"] == r][dims].mean().tolist()
+                fig_role = _radar(r_vals, r)
+                fig_role_tlx_map[r] = fig_role
+
+            st.pyplot(fig_role_tlx_map[picked], use_container_width=True)
 
     figs_to_embed = [("Team Scores vs Max", fig_team_scores)]
     figs_to_embed.extend(team_figs)          # from TEAM assessments
@@ -2328,28 +2332,52 @@ def page_team_results():
     from reportlab.platypus import Image as RLImage
     import io
 
-    def fig_to_rl_image(fig, width=460):
+    import io
+    def fig_to_png(fig):
         buf = io.BytesIO()
         fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
         buf.seek(0)
-        img = RLImage(buf)
-        w, h = img.wrap(0, 0)
-        scale = width / w
-        img._restrictSize(width, h*scale)
-        return img
+        return buf
 
+    # team scores vs max table figure (optional small bar chart)
+    # If you already have a figure for df_team_vs_max, build it, else skip
+    fig_team_scores = None
+    try:
+        # quick bar chart for the totals row
+        import matplotlib.pyplot as plt
+        cats_plot = df_team_vs_max.iloc[:-3, 0].tolist()  # skip the last 3 summary rows
+        team_vals = df_team_vs_max.iloc[:-3, 1].astype(float).tolist()
+        max_vals  = df_team_vs_max.iloc[:-3, 2].astype(float).tolist()
 
+        x = np.arange(len(cats_plot))
+        w = 0.4
+        fig_team_scores, ax = plt.subplots(figsize=(5,3))
+        ax.bar(x - w/2, team_vals, width=w, label="Team")
+        ax.bar(x + w/2, max_vals,  width=w, label="Max")
+        ax.set_xticks(x)
+        ax.set_xticklabels(cats_plot, rotation=30, fontsize=8, ha="right")
+        ax.set_ylabel("Points")
+        ax.set_title("Team Scores vs Max (by category)")
+        ax.legend(fontsize=8)
+        fig_team_scores.tight_layout()
+    except Exception:
+        fig_team_scores = None
+
+    png_team_scores = fig_to_png(fig_team_scores) if fig_team_scores else None
+    png_team_avg_tlx = fig_to_png(fig_team_avg_tlx) if fig_team_avg_tlx else None
+    png_role_tlx_all = [(r, fig_to_png(f)) for r, f in fig_role_tlx_map.items()]
+    png_team_figs    = [(title, fig_to_png(fig)) for fig, title, _ in team_figs]
     # ---------- PDF ----------
-    def build_team_pdf(df_scores, team_rows, scenario_code, sim_name,
-                   figs_to_embed):
-        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                        Table as RLTable, TableStyle, PageBreak)
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib import colors
-        from reportlab.lib.colors import HexColor
-        import io
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                Table as RLTable, TableStyle, Image)
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.colors import HexColor
 
+    def build_team_pdf(df_scores, scenario_code, sim_name,
+                    png_team_scores, png_team_avg_tlx,
+                    png_role_tlx_all, png_team_figs):
         buf = io.BytesIO()
         doc = SimpleDocTemplate(buf, pagesize=letter)
         styles = getSampleStyleSheet()
@@ -2359,10 +2387,9 @@ def page_team_results():
             Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
             Paragraph(f"Scenario Code: {scenario_code}", styles["Normal"]),
             Spacer(1, 12),
-            Paragraph("Team Scores vs Maximum", styles["Heading2"])
+            Paragraph("Team Scores vs Maximum", styles["Heading2"]),
         ]
 
-        # table
         data = [df_scores.columns.tolist()] + df_scores.values.tolist()
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
@@ -2375,67 +2402,63 @@ def page_team_results():
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
-        # charts
-        for title, fig in figs_to_embed:
-            elems.append(Paragraph(title, styles["Heading3"]))
-            elems.append(fig_to_rl_image(fig, width=460))
-            elems.append(Spacer(1, 12))
+        # add team score chart
+        if png_team_scores:
+            elems.append(Image(png_team_scores, width=430, height=260))
+            elems.append(Spacer(1,12))
 
-        # TEAM assessments text (as you already had)
-        if team_rows:
-            elems.append(PageBreak())
+        # TEAM charts
+        if png_team_figs:
             elems.append(Paragraph("TEAM Assessments", styles["Heading2"]))
-            TW_MAX = {"leadership": 8, "teamwork": 28, "task_management": 8,
-                    "overall_performance": 10, "total": 54}
-            for row in team_rows:
-                elems.append(Paragraph(f"<b>{row['team']}</b>", styles["Heading3"]))
-                txt = (f"Leadership: {row['leadership']} / {TW_MAX['leadership']}, "
-                    f"Teamwork: {row['teamwork']} / {TW_MAX['teamwork']}, "
-                    f"Task Mgmt: {row['task_management']} / {TW_MAX['task_management']}, "
-                    f"Overall: {row['overall_performance']} / {TW_MAX['overall_performance']}, "
-                    f"Total: {row['total']} / {TW_MAX['total']}")
-                elems.append(Paragraph(txt, styles["Normal"]))
-                if row.get("comments"):
-                    elems.append(Paragraph(f"Comments: {row['comments']}", styles["Italic"]))
-                elems.append(Spacer(1, 6))
+            for title, pbuf in png_team_figs:
+                elems.append(Paragraph(title, styles["Heading3"]))
+                elems.append(Image(pbuf, width=360, height=220))
+                elems.append(Spacer(1,10))
+
+        # TLX charts
+        if png_team_avg_tlx:
+            elems.append(Paragraph("NASA TLX", styles["Heading2"]))
+            elems.append(Paragraph("Team Average", styles["Heading3"]))
+            elems.append(Image(png_team_avg_tlx, width=320, height=320))
+            elems.append(Spacer(1,12))
+
+        if png_role_tlx_all:
+            elems.append(Paragraph("By Role", styles["Heading3"]))
+            for role, pbuf in png_role_tlx_all:
+                elems.append(Paragraph(role, styles["Normal"]))
+                elems.append(Image(pbuf, width=260, height=260))
+                elems.append(Spacer(1,8))
 
         doc.build(elems)
         buf.seek(0)
         return buf
 
+    pdf_team_buf = build_team_pdf(df_team_vs_max, scenario_code, sim_name,
+                                png_team_scores, png_team_avg_tlx,
+                                png_role_tlx_all, png_team_figs)
 
-    # --- AUTO TEAM PDF UPLOAD (run once) ---
-    # ---------- PDF (build & auto-upload once) ----------
-    st.markdown("---")
+    team_filename = f"{sim_name.replace(' ','_')}_team_report.pdf"
 
-    # 1) Build the PDF every run so variables exist
-    pdf_team_buf = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
-    team_file_name = f"{sim_name.replace(' ','_')}_team_report.pdf"
-
-    # 2) Auto-upload to Supabase Storage only once per session
+    # auto-upload once
     if not st.session_state.get("_team_pdf_uploaded"):
         try:
-            supabase.storage \
-                .from_("reports") \
-                .upload(
-                    path=f"team/{sim_id}/{team_file_name}",
-                    file=pdf_team_buf.getvalue(),
-                    file_options={"content-type": "application/pdf", "upsert": True}
-                )
+            supabase.storage.from_("reports").upload(
+                path=f"team/{sim_id}/{team_filename}",
+                file=pdf_team_buf.getvalue(),
+                file_options={"content-type": "application/pdf", "upsert": True}
+            )
             st.session_state["_team_pdf_uploaded"] = True
         except Exception as e:
-            st.warning(f"Could not upload team PDF: {e}")
+            st.warning(f"❌ Could not upload team PDF: {e}")
 
-    # 3) UI buttons
+    # download button & nav
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
-        st.download_button(
-            "⬇️ Download Team PDF",
-            data=pdf_team_buf,
-            file_name=team_file_name,
-            mime="application/pdf",
-            key="dl_team_pdf"
-        )
+        st.download_button("⬇️ Download Team PDF",
+                        data=pdf_team_buf,
+                        file_name=team_filename,
+                        mime="application/pdf",
+                        key="dl_team_pdf")
     with col_nav:
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
@@ -2785,19 +2808,32 @@ def page_individual_results():
             st.info("No TLX responses submitted.")
 
     # ---------- PDF ----------
+    # ---------- PDF (build, save, auto-upload) ----------
     st.markdown("---")
-    def build_pdf(fig_med_obj, fig_proc_obj, fig_tlx_obj, df_summary,
-              sim_name, dm_role, scenario_code):
-        from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
-                                        Table as RLTable, TableStyle, PageBreak)
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.lib.pagesizes import letter
-        from reportlab.lib import colors
-        from reportlab.lib.colors import HexColor
-        import io
 
+    import io
+    from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
+                                    Table as RLTable, TableStyle, Image)
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib import colors
+    from reportlab.lib.colors import HexColor
+
+    def _fig_to_png_bytes(fig):
         buf = io.BytesIO()
-        doc = SimpleDocTemplate(buf, pagesize=letter)
+        fig.savefig(buf, format="png", dpi=200, bbox_inches="tight")
+        buf.seek(0)
+        return buf
+
+    # keep the figs you already created above
+    fig_med_png  = _fig_to_png_bytes(fig_med)
+    fig_proc_png = _fig_to_png_bytes(fig_proc)
+    fig_tlx_png  = _fig_to_png_bytes(fig_tlx) if tlx_row else None
+
+    def build_pdf(df_summary, sim_name, dm_role, scenario_code,
+                fig_med_png, fig_proc_png, fig_tlx_png):
+        pdf_buf = io.BytesIO()
+        doc = SimpleDocTemplate(pdf_buf, pagesize=letter)
         styles = getSampleStyleSheet()
 
         elems = [
@@ -2824,58 +2860,45 @@ def page_individual_results():
 
         # charts
         elems.append(Paragraph("Charts", styles["Heading2"]))
-        elems.append(Paragraph("Medical Knowledge vs Max", styles["Heading3"]))
-        elems.append(fig_to_rl_image(fig_med_obj, width=460))
-        elems.append(Spacer(1, 12))
-
-        elems.append(Paragraph("Procedural Knowledge vs Max", styles["Heading3"]))
-        elems.append(fig_to_rl_image(fig_proc_obj, width=460))
-        elems.append(Spacer(1, 12))
-
-        if fig_tlx_obj is not None:
-            elems.append(Paragraph("NASA TLX Radar", styles["Heading3"]))
-            elems.append(fig_to_rl_image(fig_tlx_obj, width=360))
-            elems.append(Spacer(1, 12))
+        elems.append(Image(fig_med_png, width=400, height=240))
+        elems.append(Spacer(1,12))
+        elems.append(Image(fig_proc_png, width=400, height=240))
+        if fig_tlx_png:
+            elems.append(Spacer(1,12))
+            elems.append(Image(fig_tlx_png, width=320, height=320))
 
         doc.build(elems)
-        buf.seek(0)
-        return buf
+        pdf_buf.seek(0)
+        return pdf_buf
 
+    # build once
+    pdf_buf = build_pdf(df_summary, sim_name, dm_role, scenario_code,
+                        fig_med_png, fig_proc_png, fig_tlx_png)
 
-    # --- AUTO PDF UPLOAD (run once) ---
-    # ---------- PDF ----------
-    st.markdown("---")
-
-    # Always build the buffer & filename (cheap enough and solves UnboundLocalError)
-    pdf_buf   = build_pdf()
     file_name = f"{sim_name.replace(' ','_')}_{dm_role.replace(' ','_')}_results.pdf"
 
-    # (Optional) auto‑upload once
+    # auto-upload once
     if not st.session_state.get("_ind_pdf_uploaded"):
         try:
-            supabase.storage \
-                .from_("reports") \
-                .upload(
-                    path=f"individual/{sim_id}/{file_name}",
-                    file=pdf_buf.getvalue(),
-                    file_options={"content-type": "application/pdf", "upsert": True}
-                )
+            supabase.storage.from_("reports").upload(
+                path=f"individual/{sim_id}/{file_name}",
+                file=pdf_buf.getvalue(),   # bytes!
+                file_options={"content-type": "application/pdf", "upsert": True}
+            )
             st.session_state["_ind_pdf_uploaded"] = True
         except Exception as e:
-            st.warning(f"Could not upload PDF: {e}")
+            st.warning(f"❌ Could not upload PDF to storage: {e}")
 
+    # download button
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
-        st.download_button(
-            "⬇️ Download PDF",
-            data=pdf_buf,
-            file_name=file_name,
-            mime="application/pdf",
-            key="dl_ind_pdf"
-        )
+        st.download_button("⬇️ Download PDF", data=pdf_buf, file_name=file_name,
+                        mime="application/pdf", key="dl_ind_pdf")
     with col_nav:
         if st.button("🏠 Main Menu"):
-            nav_to("welcome")       
+            nav_to("welcome")
+
+          
 
 
 
