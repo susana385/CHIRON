@@ -2336,7 +2336,6 @@ def page_individual_results():
     answers_cache      = st.session_state.get("answers_cache", [])
     participants_cache = st.session_state.get("participants_cache", [])
 
-    # Guard: ensure participant exists (or allow supervisor to inspect?)
     if user_role not in ("supervisor", "administrator"):
         if not any(p["id"] == part_id for p in participants_cache):
             st.error("Your participant record was not found.")
@@ -2410,7 +2409,7 @@ def page_individual_results():
     MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
     PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
 
-    # Actual scores (floats for safety)
+    # --- Actual scores ---
     try:
         med_actuals  = [float(ind[c]) for c in MED_CATS]
         proc_actuals = [float(ind[c]) for c in PROC_CATS]
@@ -2421,46 +2420,55 @@ def page_individual_results():
         st.error(f"Malformed numeric data in individual_results: {e}")
         return
 
-    # --- Fetch role-specific max scores for this scenario (cached) ---
+    # ---------------------- RAW ANSWERS & PENALTY (MOVE EARLY) ----------------------
+    my_answers = [a for a in answers_cache
+                  if a["id_simulation"] == sim_id
+                  and a["id_participant"] == part_id]
+
+    import pandas as pd
+    df_raw = pd.DataFrame(my_answers) if my_answers else pd.DataFrame(
+        columns=["inject","answer_text","penalty","response_seconds"]
+    )
+    total_penalty = float(df_raw.get("penalty", 0).fillna(0).sum())
+    # --------------------------------------------------------------------------------
+
+    # --- Fetch role-specific max scores for this scenario ---
     @st.cache_data(ttl=10)
     def fetch_role_maxes(role_, scen_code):
-        role_norm = role_.strip()
-        scen_norm = scen_code.strip().lower()
         try:
-            q = (supabase
-                .from_("max_scores")
-                .select("category,max_value,scenario_code,role")
-                .ilike("role", role_norm)              # tolerate small diffs
-                .ilike("scenario_code", scen_norm))    # e.g. 'c7,b13,%'
-            res = q.execute()
+            res = (supabase
+                   .from_("max_scores")
+                   .select("category, max_value, scenario_code, role")
+                   .eq("role", role_)
+                   .eq("scenario_code", scen_code)
+                   .execute())
             return res.data or []
-        except Exception as e:
-            st.warning(f"max_scores fetch failed: {e}")
+        except Exception:
             return []
 
     max_rows = fetch_role_maxes(dm_role, scenario_code)
-    st.write("DBG max_rows:", max_rows) 
-
-    ROLE_ALIASES = {"FE-3 (EVA2)": "FE-3 (EVA)", "FE-2 (IV1)": "FE-2 (IV1)"}
-    role_for_max = ROLE_ALIASES.get(dm_role, dm_role)
-    max_rows = fetch_role_maxes(role_for_max, scenario_code)
+    st.write("DBG max_rows:", max_rows)  # keep while debugging; remove later
 
     if not max_rows:
         st.warning("No max_scores found for your role & scenario. Percentages unavailable.")
-    # Map categories (normalize lowercase)
+
+    # Map both exact and *_total names:
     role_max_map = {}
     for r in max_rows:
         cat = r["category"].lower()
         role_max_map[cat] = float(r["max_value"])
 
-    # Compute max for each atomic category; fall back to 0 if missing
-    med_maxs  = [role_max_map.get(c, 0.0) for c in MED_CATS]
-    proc_maxs = [role_max_map.get(c, 0.0) for c in PROC_CATS]
+    def pick_max(name):
+        n = name.lower()
+        return role_max_map.get(n, role_max_map.get(f"{n}_total", 0.0))
+
+    med_maxs     = [pick_max(c) for c in MED_CATS]
+    proc_maxs    = [pick_max(c) for c in PROC_CATS]
     med_max_sub  = sum(med_maxs)
     proc_max_sub = sum(proc_maxs)
     max_total    = med_max_sub + proc_max_sub
 
-    # --- TLX (taskload) load (cached) ---
+    # --- TLX ---
     @st.cache_data(ttl=10)
     def fetch_tlx(sim_id_, participant_id_):
         try:
@@ -2477,7 +2485,7 @@ def page_individual_results():
 
     tlx_row = fetch_tlx(sim_id, part_id)
 
-    # --- Layout: Medical & Procedural side-by-side ---
+    # --- Charts ---
     col_med, col_proc = st.columns(2)
     import numpy as np
     import matplotlib.pyplot as plt
@@ -2518,22 +2526,31 @@ def page_individual_results():
     # --- Summary Table & TLX ---
     col_table, col_tlx = st.columns(2)
 
-    # Build summary table rows
+    # Helper for pct strings
+    def pct(v, m):
+        return f"{100*v/m:.1f}%" if m else "—"
+
     rows = []
     for c, a, m in zip(MED_CATS, med_actuals, med_maxs):
-        pct = f"{100*a/m:.1f}%" if m else "—"
-        rows.append([c.replace("_"," ").title(), a, m, pct])
+        rows.append([c.replace("_"," ").title(), a, m, pct(a,m)])
     for c, a, m in zip(PROC_CATS, proc_actuals, proc_maxs):
-        pct = f"{100*a/m:.1f}%" if m else "—"
-        rows.append([c.replace("_"," ").title(), a, m, pct])
+        rows.append([c.replace("_"," ").title(), a, m, pct(a,m)])
+
+    pct_med   = pct(med_subtot,  med_max_sub)
+    pct_proc  = pct(proc_subtot, proc_max_sub)
+    pct_total = pct(actual_total, max_total)
+
+    score_after_penalty = actual_total - total_penalty
 
     rows += [
-        ["Medical Knowledge",    med_subtot,  med_max_sub,  f"{100*med_subtot/med_max_sub:.1f}%" if med_max_sub else "—"],
-        ["Procedural Knowledge", proc_subtot, proc_max_sub, f"{100*proc_subtot/proc_max_sub:.1f}%" if proc_max_sub else "—"],
-        ["Total",                actual_total, max_total,   f"{100*actual_total/max_total:.1f}%" if max_total else "—"]
+        ["Medical Knowledge",    med_subtot,  med_max_sub,  pct_med],
+        ["Procedural Knowledge", proc_subtot, proc_max_sub, pct_proc],
+        ["Total",                actual_total, max_total,   pct_total],
+        ["Penalties",           -total_penalty, "",         ""],
+        ["Total (after pen.)",   score_after_penalty, max_total,
+         pct(score_after_penalty, max_total)]
     ]
 
-    import pandas as pd
     df_summary = pd.DataFrame(rows, columns=["Category", "Your Score", "Max Score", "% of Max"])
 
     with col_table:
@@ -2544,64 +2561,40 @@ def page_individual_results():
         st.subheader("💼 Task Load (NASA TLX)")
         if tlx_row:
             tlx_cols = ["mental","physical","temporal","performance","effort","frustration"]
-            tlx_vals = [tlx_row[c] for c in tlx_cols]
-            angles = np.linspace(0, 2*np.pi, len(tlx_cols), endpoint=False)
-            angles = np.concatenate([angles, angles[:1]])
-            vals_wrap = tlx_vals + [tlx_vals[0]]
-            fig_tlx, ax_tlx = plt.subplots(subplot_kw={"polar":True}, figsize=(4,4))
-            ax_tlx.plot(angles, vals_wrap, linewidth=2)
-            ax_tlx.fill(angles, vals_wrap, alpha=0.25)
-            ax_tlx.set_xticks(angles[:-1])
-            ax_tlx.set_xticklabels([c.title() for c in tlx_cols], fontsize=8)
-            ax_tlx.set_ylim(0, max(vals_wrap)*1.1 if any(vals_wrap) else 1)
-            fig_tlx.tight_layout()
-            st.pyplot(fig_tlx, use_container_width=True)
+            tlx_vals = [tlx_row.get(c,0) for c in tlx_cols]
+            if any(tlx_vals):
+                angles = np.linspace(0, 2*np.pi, len(tlx_cols), endpoint=False)
+                angles = np.concatenate([angles, angles[:1]])
+                vals_wrap = tlx_vals + [tlx_vals[0]]
+                fig_tlx, ax_tlx = plt.subplots(subplot_kw={"polar":True}, figsize=(4,4))
+                ax_tlx.plot(angles, vals_wrap, linewidth=2)
+                ax_tlx.fill(angles, vals_wrap, alpha=0.25)
+                ax_tlx.set_xticks(angles[:-1])
+                ax_tlx.set_xticklabels([c.title() for c in tlx_cols], fontsize=8)
+                ax_tlx.set_ylim(0, max(vals_wrap)*1.1)
+                fig_tlx.tight_layout()
+                st.pyplot(fig_tlx, use_container_width=True)
+            else:
+                st.info("TLX recorded but all values are zero.")
         else:
             st.info("No TLX responses submitted.")
-    # ---- compute total penalty from your raw answers (do this earlier when you build df_raw) ----
-    total_penalty = float(df_raw["penalty"].fillna(0).sum()) if "penalty" in df_raw.columns else 0.0
-    score_after_penalty = actual_total - total_penalty
-
-    # ---- append to the rows list BEFORE building df_summary ----
-    rows += [
-        ["Penalties",          -total_penalty,   "",          ""],
-        ["Total (after pen.)", score_after_penalty, max_total,
-        f"{100*score_after_penalty/max_total:.1f}%" if max_total else "—"]
-    ]
-
-    # now build the dataframe
-    df_summary = pd.DataFrame(rows, columns=["Category", "Your Score", "Max Score", "% of Max"])
-
 
     st.markdown("---")
     st.subheader("📝 Your Raw Answers")
 
-    # Filter this participant’s answers (from cache)
-    my_answers = [a for a in answers_cache
-                  if a["id_simulation"] == sim_id
-                  and a["id_participant"] == part_id]
-
-    if not my_answers:
+    if df_raw.empty:
         st.info("No answers recorded yet.")
     else:
-        # Optional: order by numeric decision/inject sequence if you stored that mapping
-        df_raw = pd.DataFrame(my_answers)
-# normalize prefix
-        df_raw["prefix"] = df_raw["inject"].str.extract(r'^(Initial Situation|Inject \d+|Decision \d+)')
+        # Remove inject rows, show important cols
+        df_show = df_raw[~df_raw["inject"].str.startswith("Inject")]
+        cols_to_show = [c for c in ["inject","answer_text",
+                                    "basic_life_support","primary_survey",
+                                    "secondary_survey","definitive_care",
+                                    "crew_roles_communication","systems_procedural_knowledge",
+                                    "response_time","penalty"] if c in df_show.columns]
+        st.dataframe(df_show[cols_to_show], use_container_width=True)
 
-        # keep ONLY the latest row per prefix (by response_seconds or updated_at if you store it)
-        df_raw = df_raw.sort_values(["response_seconds", "inject"]).drop_duplicates("prefix", keep="last")
-
-        cols = [
-            "inject", "answer_text",
-            "basic_life_support","primary_survey","secondary_survey","definitive_care",
-            "crew_roles_communication","systems_procedural_knowledge",
-            "response_seconds","penalty"
-        ]
-        cols = [c for c in cols if c in df_raw.columns]  # guard
-        st.dataframe(df_raw[cols], use_container_width=True)
-
-    # --- PDF (Lazy Build) ---
+    # --- PDF ---
     def build_pdf():
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table as RLTable, TableStyle
         from reportlab.lib.styles import getSampleStyleSheet
@@ -2614,7 +2607,7 @@ def page_individual_results():
         doc = SimpleDocTemplate(buf, pagesize=letter)
         styles = getSampleStyleSheet()
         elems = [
-            Paragraph(f"Individual Performance Report", styles["Title"]),
+            Paragraph("Individual Performance Report", styles["Title"]),
             Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
             Paragraph(f"Role: {dm_role}", styles["Normal"]),
             Paragraph(f"Scenario Code: {scenario_code}", styles["Normal"]),
@@ -2634,7 +2627,6 @@ def page_individual_results():
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
-        # (Optional) embed static summary of TLX:
         if tlx_row:
             elems.append(Paragraph("TLX Scores", styles["Heading2"]))
             tlx_text = ", ".join(f"{k.title()}: {v}" for k,v in tlx_row.items())
@@ -2659,6 +2651,7 @@ def page_individual_results():
     with col_nav:
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
+
 
 
 
