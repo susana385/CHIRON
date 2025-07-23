@@ -1955,6 +1955,24 @@ def page_certify_and_results():
             nav_to("team_results")
             return
 
+def upload_pdf_to_storage(buf: bytes, filename: str, folder: str = "reports") -> str | None:
+    try:
+        supabase.storage.from_(folder).upload(
+            path=filename,
+            file=buf,
+            file_options={"content-type": "application/pdf", "upsert": True}
+        )
+    except Exception as e:
+        st.error(f"❌ Could not upload PDF to storage: {e}")
+        return None
+
+    try:
+        return supabase.storage.from_(folder).get_public_url(filename)
+    except Exception as e:
+        st.warning(f"Uploaded but failed to get URL: {e}")
+        return None
+
+
 
 def page_team_results():
     """Display aggregated team performance, max comparisons, TEAM assessment, and export report."""
@@ -2337,20 +2355,33 @@ def page_team_results():
         buf.seek(0)
         return buf
 
-    col_pdf, col_nav = st.columns([1,1])
-    with col_pdf:
-        if st.button("📄 Generate PDF Report"):
-            pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
-            st.download_button(
-                "⬇️ Download Report",
-                data=pdf_buffer,
-                file_name=f"{sim_name}_team_report.pdf",
-                mime="application/pdf"
-            )
+    # --- AUTO TEAM PDF UPLOAD (run once) ---
+    if "team_pdf_url" not in st.session_state:
+        pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
+        pdf_bytes  = pdf_buffer.getvalue()
 
-    with col_nav:
-        if st.button("🏠 Main Menu"):
-            nav_to("welcome")
+        team_name  = sim_name.replace(" ", "_") or f"sim_{sim_id}"
+        out_name   = f"sim_{sim_id}/team/{team_name}_team_report.pdf"
+        url = upload_pdf_to_storage(pdf_bytes, out_name)
+
+        st.session_state["team_pdf_url"]   = url
+        st.session_state["team_pdf_bytes"] = pdf_bytes
+
+    if st.session_state.get("team_pdf_url"):
+        st.success("📤 Team report saved to Supabase.")
+        st.markdown(f"[View team report]({st.session_state['team_pdf_url']})")
+
+    st.download_button(
+        "⬇️ Download Team Report",
+        data=st.session_state.get("team_pdf_bytes", b""),
+        file_name=f"{sim_name.replace(' ','_')}_team_report.pdf",
+        mime="application/pdf",
+        disabled=st.session_state.get("team_pdf_bytes") is None
+    )
+
+    
+    if st.button("🏠 Main Menu"):
+        nav_to("welcome")
 
 
 
@@ -2723,18 +2754,32 @@ def page_individual_results():
         buf.seek(0)
         return buf
 
-    col_pdf, col_nav = st.columns([1,1])
-    with col_pdf:
-        if st.button("📄 Generate PDF"):
-            pdf_buf = build_pdf()
-            st.download_button("⬇️ Download PDF",
-                               data=pdf_buf,
-                               file_name=f"{dm_role.replace(' ','_')}_results.pdf",
-                               mime="application/pdf")
+    # --- AUTO PDF UPLOAD (run once) ---
+    if "ind_pdf_url" not in st.session_state:
+        pdf_buf   = build_pdf()                 # your existing builder returns BytesIO
+        pdf_bytes = pdf_buf.getvalue()
 
-    with col_nav:
-        if st.button("🏠 Main Menu"):
-            nav_to("welcome")        
+        out_name = f"sim_{sim_id}/individual/{dm_role.replace(' ','_')}_{part_id}.pdf"
+        url = upload_pdf_to_storage(pdf_bytes, out_name)
+
+        st.session_state["ind_pdf_url"]   = url
+        st.session_state["ind_pdf_bytes"] = pdf_bytes  # optional keep for download button
+
+    # Show link/download
+    if st.session_state.get("ind_pdf_url"):
+        st.success("📤 Individual report saved to Supabase.")
+        st.markdown(f"[Open report]({st.session_state['ind_pdf_url']})")
+
+    st.download_button(
+        "⬇️ Download PDF",
+        data=st.session_state.get("ind_pdf_bytes", b""),
+        file_name=f"{dm_role.replace(' ','_')}_results.pdf",
+        mime="application/pdf",
+        disabled=st.session_state.get("ind_pdf_bytes") is None
+    )
+
+    if st.button("🏠 Main Menu"):
+        nav_to("welcome")        
 
 
 
