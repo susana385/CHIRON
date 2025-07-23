@@ -1955,22 +1955,39 @@ def page_certify_and_results():
             nav_to("team_results")
             return
 
-def upload_pdf_to_storage(buf: bytes, filename: str, folder: str = "reports") -> str | None:
+def upload_pdf_to_storage(pdf_bytes: bytes, filename: str, bucket: str = "reports") -> str | None:
     try:
-        supabase.storage.from_(folder).upload(
+        # 1) upload (no bools inside file_options)
+        supabase.storage.from_(bucket).upload(
             path=filename,
-            file=buf,
-            file_options={"content-type": "application/pdf", "upsert": True}
+            file=pdf_bytes,
+            file_options={"content-type": "application/pdf"},  # all values must be str/bytes
+            upsert=True  # <-- this param is supported by python-supabase 2.x
         )
+    except TypeError:
+        # your SDK might NOT support 'upsert' kwarg; do a safe re-upload:
+        try:
+            # try to delete then upload
+            supabase.storage.from_(bucket).remove([filename])
+            supabase.storage.from_(bucket).upload(
+                path=filename,
+                file=pdf_bytes,
+                file_options={"content-type": "application/pdf"}
+            )
+        except Exception as e2:
+            st.error(f"❌ Could not upload PDF to storage: {e2}")
+            return None
     except Exception as e:
         st.error(f"❌ Could not upload PDF to storage: {e}")
         return None
 
+    # 2) public URL
     try:
-        return supabase.storage.from_(folder).get_public_url(filename)
+        return supabase.storage.from_(bucket).get_public_url(filename)
     except Exception as e:
         st.warning(f"Uploaded but failed to get URL: {e}")
         return None
+
 
 
 
