@@ -2435,7 +2435,7 @@ def page_individual_results():
         except Exception:
             return []
         
-    st.write("DBG max_scores for my role:", dbg)
+    st.write("DBG max_scores for my role:", res.data)
 
     max_rows = fetch_role_maxes(dm_role, scenario_code)
     if not max_rows:
@@ -2907,15 +2907,38 @@ def page_running_simulations():
 
                 st.write("DEBUG step inspection:", inspect)
 
+                # helper (put near other DB helpers or inline-cache it)
+                def _tlx_submitted(sim_id, part_id):
+                    try:
+                        r = (supabase
+                            .from_("taskload_responses")
+                            .select("id_simulation")
+                            .eq("id_simulation", sim_id)
+                            .eq("id_participant", part_id)
+                            .maybe_single()
+                            .execute())
+                        return bool(getattr(r, "data", None))
+                    except Exception:
+                        return False
+
+
                 # special-case the Initial Situation inject
                 if next_step == "Initial Situation":
                     dm_stage = 0
                     current_decision_index = None
                     flat_questions = []
                 elif next_step is None:
-                    dm_stage = 12
+                    if _tlx_submitted(sim["id"], part["id"]):
+                        dm_stage = 13                      # “all done”
+                    else:
+                        dm_stage = 12                      # go to TLX
                     current_decision_index = None
                     flat_questions = []
+                    # lock & stash
+                    st.session_state.all_questions = []
+                    st.session_state.current_decision_index = None
+                    st.session_state.dm_stage = dm_stage
+                    st.session_state._stage_locked = True
                 elif next_step.startswith("Inject"):
                     inj_no = int(next_step.split()[1])          # "Inject 3" -> 3
                     dm_stage = {1:1, 2:3, 3:5, 4:7}[inj_no]      # your own mapping
