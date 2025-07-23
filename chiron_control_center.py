@@ -3017,7 +3017,7 @@ def page_running_simulations():
                     "is_inject:", next_step.startswith("Inject") if next_step else None)
 
 
-                #nav_to("dm_questionnaire")
+                nav_to("dm_questionnaire")
                 return
 
             st.error("Only supervisors or participants can join a running simulation.")
