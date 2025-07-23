@@ -2909,15 +2909,16 @@ def page_running_simulations():
                 if next_step == "Initial Situation":
                     dm_stage = 0
                     current_decision_index = None
-
+                    flat_questions = []
                 elif next_step is None:
                     dm_stage = 12
                     current_decision_index = None
-
+                    flat_questions = []
                 elif next_step.startswith("Inject"):
                     # e.g. "Inject 2" → stage 3
                     dm_stage = int(next_step.split()[1]) + 1
                     current_decision_index = None
+                    flat_questions = []
 
                 else:
                     # it really is a Decision X
