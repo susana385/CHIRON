@@ -1957,7 +1957,20 @@ def page_certify_and_results():
 
 
 def page_team_results():
-    """Display aggregated team performance, max comparisons, TEAM assessment, and export report."""
+    """
+    Aggregated team performance page.
+    - Uses ONLY DB tables (answers, individual_results, max_scores, teamwork, simulation).
+    - Derives scenario_code from FD answers to 7/13/23/34.
+    - Compares summed team scores vs summed max per category.
+    - Plots TEAM (Leadership, Teamwork, Task Mgmt) side-by-side.
+    """
+    import io
+    import re
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import streamlit as st
+
     sim_id   = st.session_state.get("simulation_id")
     sim_name = st.session_state.get("simulation_name", "")
     if not sim_id:
@@ -1967,25 +1980,88 @@ def page_team_results():
         return
 
     st.header("🏆 Team Performance Results")
-    st.subheader(f"Simulation: {sim_name} (id={sim_id})")
+    st.caption(f"Simulation: **{sim_name}** (id={sim_id})")
 
-    # --- Sync snapshot (participants & answers) ---
-    sync_simulation_state(sim_id)
+    # ------------------- helpers -------------------
+    def normalize(lbl: str) -> str:
+        if not lbl:
+            return ""
+        m = re.match(r"^(Decision \d+|Inject \d+|Initial Situation)", lbl.strip())
+        return m.group(1) if m else lbl.strip()
 
-    # --- Check simulation finished (light cached fetch) ---
+    def scenario_token(dec_label: str, ans_text: str) -> str:
+        # same logic used elsewhere: first letter before '.', lowercase
+        base = ans_text.split(".")[0].strip().lower()
+        letter = base[0] if base else "x"
+        number = dec_label.split()[-1]
+        return f"{letter}{number}"
+
+    MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
+    PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
+    ALL_CATS  = MED_CATS + PROC_CATS
+
+    RAW_TO_TOTAL = {
+        "basic_life_support":             "basic_life_support_total",
+        "primary_survey":                 "primary_survey_total",
+        "secondary_survey":               "secondary_survey_total",
+        "definitive_care":                "definitive_care_total",
+        "crew_roles_communication":       "crew_roles_communication_total",
+        "systems_procedural_knowledge":   "systems_procedural_knowledge_total",
+    }
+
+    # ------------------- DB fetches -------------------
     @st.cache_data(ttl=5)
     def fetch_sim_status(sim_id_):
-        try:
-            res = (supabase
-                   .from_("simulation")
-                   .select("status,name")
-                   .eq("id", sim_id_)
-                   .maybe_single()
-                   .execute())
-            return res.data
-        except Exception:
-            return None
+        return (supabase
+                .from_("simulation")
+                .select("status,name")
+                .eq("id", sim_id_)
+                .maybe_single()
+                .execute()).data
 
+    @st.cache_data(ttl=10)
+    def fetch_participants(sim_id_):
+        return (supabase
+                .from_("participant")
+                .select("id, participant_role")
+                .eq("id_simulation", sim_id_)
+                .execute()).data or []
+
+    @st.cache_data(ttl=10)
+    def fetch_fd_answers(sim_id_, fd_pid):
+        return (supabase
+                .from_("answers")
+                .select("inject,answer_text")
+                .eq("id_simulation", sim_id_)
+                .eq("id_participant", fd_pid)
+                .in_("inject", ["Decision 7","Decision 13","Decision 23","Decision 34"])
+                .execute()).data or []
+
+    @st.cache_data(ttl=10)
+    def fetch_individual(sim_id_):
+        return (supabase
+                .from_("individual_results")
+                .select(",".join(ALL_CATS))
+                .eq("simulation_id", sim_id_)
+                .execute()).data or []
+
+    @st.cache_data(ttl=10)
+    def fetch_max_scores(code: str):
+        return (supabase
+                .from_("max_scores")
+                .select("role,category,max_value,scenario_code")
+                .eq("scenario_code", code)
+                .execute()).data or []
+
+    @st.cache_data(ttl=10)
+    def fetch_teamwork_all(sim_id_):
+        return (supabase
+                .from_("teamwork")
+                .select("team,leadership,teamwork,task_management,overall_performance,total,comments,created_at")
+                .eq("id_simulation", sim_id_)
+                .execute()).data or []
+
+    # ------------------- simulation state -------------------
     sim_row = fetch_sim_status(sim_id)
     if not sim_row:
         st.error("Could not load simulation status.")
@@ -1996,121 +2072,59 @@ def page_team_results():
             nav_to("certify_and_results")
         return
 
-    # --- Helpers ---
-    def normalize_inject(label: str) -> str:
-        import re
-        if not label:
-            return ""
-        m = re.match(r"^(Decision \d+|Inject \d+|Initial Situation)", label.strip())
-        return m.group(1) if m else label.strip()
-
-    # --- Gather FD key decisions from cache ---
-    participants_cache = st.session_state.get("participants_cache", [])
-    answers_cache      = st.session_state.get("answers_cache", [])
-
-    fd_id = next((p["id"] for p in participants_cache if p.get("participant_role") == "FD"), None)
+    parts = fetch_participants(sim_id)
+    fd_id = next((p["id"] for p in parts if p.get("participant_role") == "FD"), None)
     if not fd_id:
-        st.error("Flight Director not found in participant list.")
+        st.error("FD not found.")
         return
 
-    key_needed = {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}
-    fd_key_answers = {}
-    for a in answers_cache:
-        if a["id_simulation"] != sim_id or a["id_participant"] != fd_id:
-            continue
-        pref = normalize_inject(a["inject"])
-        if pref in key_needed and a.get("answer_text") is not None:
-            fd_key_answers[pref] = a["answer_text"]
-
-    missing = [k for k in key_needed if k not in fd_key_answers]
+    # ------------------- scenario code -------------------
+    fd_ans_rows = fetch_fd_answers(sim_id, fd_id)
+    fd_map = {normalize(r["inject"]): r["answer_text"] for r in fd_ans_rows if r.get("answer_text")}
+    needed = ["Decision 7","Decision 13","Decision 23","Decision 34"]
+    missing = [n for n in needed if n not in fd_map]
     if missing:
         st.error(f"Missing FD key decisions: {', '.join(missing)}")
         return
 
-    # --- Derive scenario code (replicate existing logic) ---
-    def scenario_token(dec_label: str, ans_text: str) -> str:
-        """
-        Turn FD answer_text into the letter-token used in scenario_code.
-        Original logic took the part before '.' and first char lowercased.
-        """
-        base = ans_text.split(".")[0].strip().lower()  # e.g. 'b something' → 'b something'
-        letter = base[0] if base else 'x'
-        number = dec_label.split()[-1]  # 'Decision 7' -> '7'
-        return f"{letter}{number}"
-
     scenario_code = ",".join([
-        scenario_token("Decision 7",  fd_key_answers["Decision 7"]),
-        scenario_token("Decision 13", fd_key_answers["Decision 13"]),
-        scenario_token("Decision 23", fd_key_answers["Decision 23"]),
-        scenario_token("Decision 34", fd_key_answers["Decision 34"]),
+        scenario_token("Decision 7",  fd_map["Decision 7"]),
+        scenario_token("Decision 13", fd_map["Decision 13"]),
+        scenario_token("Decision 23", fd_map["Decision 23"]),
+        scenario_token("Decision 34", fd_map["Decision 34"]),
     ])
+    st.caption(f"Scenario code: `{scenario_code}`")
 
-    st.caption(f"**Scenario code derived:** `{scenario_code}`")
-
-    # --- Fetch individual_results (cached) ---
-    @st.cache_data(ttl=10)
-    def fetch_individual(sim_id_):
-        try:
-            res = (supabase
-                   .from_("individual_results")
-                   .select("basic_life_support, primary_survey, secondary_survey, "
-                           "definitive_care, crew_roles_communication, systems_procedural_knowledge")
-                   .eq("simulation_id", sim_id_)
-                   .execute())
-            return res.data or []
-        except Exception:
-            return []
-
+    # ------------------- team totals vs max -------------------
     ind_rows = fetch_individual(sim_id)
     if not ind_rows:
-        st.info("No individual aggregate results yet.")
+        st.info("No individual_results rows yet.")
         return
-
     df_ind = pd.DataFrame(ind_rows)
 
-    MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
-    PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
-    ALL_CATS  = MED_CATS + PROC_CATS
-
+    # team actual sums per cat
     actual_totals = df_ind[ALL_CATS].sum().to_dict()
 
-    # --- Fetch max_scores for scenario ---
-    @st.cache_data(ttl=10)
-    def fetch_max_scores(code: str):
-        try:
-            res = (supabase
-                   .from_("max_scores")
-                   .select("role, category, max_value, scenario_code")
-                   .eq("scenario_code", code)        # if exact match works; use .ilike if pattern
-                   .execute())
-            return res.data or []
-        except Exception:
-            return []
-
+    # max scores from table
     ms_rows = fetch_max_scores(scenario_code)
     if not ms_rows:
         st.warning("No max_scores rows found for this scenario code.")
-        team_max_by_cat = {c: 0 for c in ALL_CATS}
+        team_max_by_cat = {c: 0.0 for c in ALL_CATS}
     else:
         df_ms = pd.DataFrame(ms_rows)
         df_ms["category"] = df_ms["category"].str.lower()
-        team_max_by_cat = df_ms.groupby("category")["max_value"].sum().to_dict()
-        # Ensure all categories present
-        for c in ALL_CATS:
-            team_max_by_cat.setdefault(c, 0)
 
-    # --- Build table rows ---
+        team_max_by_cat = {}
+        for raw_cat, total_cat in RAW_TO_TOTAL.items():
+            m = df_ms[df_ms["category"] == total_cat.lower()]["max_value"].sum()
+            team_max_by_cat[raw_cat] = float(m) if not pd.isna(m) else 0.0
+
     rows = []
     for cat in ALL_CATS:
-        actual = actual_totals.get(cat, 0)
-        mval   = team_max_by_cat.get(cat, 0)
-        pct    = f"{(100*actual/mval):.1f}%" if mval else "—"
-        rows.append([
-            cat.replace("_", " ").title(),
-            actual,
-            mval,
-            pct
-        ])
+        actual = actual_totals.get(cat, 0.0)
+        mval   = team_max_by_cat.get(cat, 0.0)
+        pct    = f"{100*actual/mval:.1f}%" if mval else "—"
+        rows.append([cat.replace("_"," ").title(), actual, mval, pct])
 
     med_actual_sum  = sum(actual_totals[c] for c in MED_CATS)
     med_max_sum     = sum(team_max_by_cat.get(c, 0) for c in MED_CATS)
@@ -2132,81 +2146,100 @@ def page_team_results():
     st.subheader("📊 Team Scores vs Maximum")
     st.dataframe(df_team_vs_max, use_container_width=True)
 
-    # --- TEAM (supervisor) assessment ---
-    @st.cache_data(ttl=10)
-    def fetch_teamwork_all(sim_id_: int):
-        try:
-            res = (supabase
-                .from_("teamwork")
-                .select("team, leadership, teamwork, task_management, overall_performance, total, comments, created_at")
-                .eq("id_simulation", sim_id_)
-                .execute())
-            return res.data or []
-        except Exception:
-            return []
-
+    # ------------------- TEAM assessments -------------------
     tw_rows = fetch_teamwork_all(sim_id)
     if not tw_rows:
         st.info("No TEAM assessments found.")
+        team_rows_for_pdf = []
     else:
+        team_rows_for_pdf = tw_rows
         st.subheader("🔹 TEAM Assessments (by crew)")
 
-        # bar chart per row
-        TW_LABELS = ["Leadership", "Teamwork", "Task Mgmt", "Overall", "Total"]
-        TW_KEYS   = ["leadership", "teamwork", "task_management", "overall_performance", "total"]
-        TW_MAXES  = [8, 28, 8, 10, 54]
+        # Make three side-by-side charts for Leadership, Teamwork, Task Mgmt (per crew)
+        TW_KEYS   = ["leadership", "teamwork", "task_management"]
+        TW_LABELS = ["Leadership", "Teamwork", "Task Mgmt"]
+        TW_MAX    = {"leadership": 8, "teamwork": 28, "task_management": 8,
+                     "overall_performance": 10, "total": 54}
 
+        # One row of columns per crew
         for row in tw_rows:
-            st.markdown(f"### {row['team']}")
-            values = [row[k] for k in TW_KEYS]
+            st.markdown(f"#### {row['team']}")
+            c1, c2, c3 = st.columns(3)
+            vals = [row[k] for k in TW_KEYS]
 
-            x = np.arange(len(TW_LABELS))
-            width = 0.35
-            fig, ax = plt.subplots(figsize=(6, 3))
-            ax.bar(x - width/2, values, width, label="Score")
-            ax.bar(x + width/2, TW_MAXES, width, label="Max")
-            ax.set_xticks(x)
-            ax.set_xticklabels(TW_LABELS)
-            ax.set_ylabel("Points")
-            ax.set_title(f"TEAM Scores vs Max – {row['team']}")
-            ax.legend()
-            fig.tight_layout()
-            st.pyplot(fig, use_container_width=True)
+            # left column: leadership bar
+            with c1:
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar([0,1], [vals[0], TW_MAX["leadership"]], width=0.4)
+                ax.set_xticks([0,1])
+                ax.set_xticklabels(["Score","Max"])
+                ax.set_title("Leadership")
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=True)
 
-            with st.expander("Details"):
-                st.write(f"- Leadership: **{row['leadership']}** / 8")
-                st.write(f"- Teamwork: **{row['teamwork']}** / 28")
-                st.write(f"- Task Mgmt: **{row['task_management']}** / 8")
-                st.write(f"- Overall: **{row['overall_performance']}** / 10")
-                st.write(f"- Total: **{row['total']}** / 54")
+            # middle: teamwork bar
+            with c2:
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar([0,1], [vals[1], TW_MAX["teamwork"]], width=0.4)
+                ax.set_xticks([0,1])
+                ax.set_xticklabels(["Score","Max"])
+                ax.set_title("Teamwork")
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=True)
+
+            # right: task mgmt bar
+            with c3:
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar([0,1], [vals[2], TW_MAX["task_management"]], width=0.4)
+                ax.set_xticks([0,1])
+                ax.set_xticklabels(["Score","Max"])
+                ax.set_title("Task Mgmt")
+                fig.tight_layout()
+                st.pyplot(fig, use_container_width=True)
+
+            # Optional details expander
+            with st.expander("Details / Overall"):
+                st.write(f"- Overall: **{row['overall_performance']}** / {TW_MAX['overall_performance']}")
+                st.write(f"- Total: **{row['total']}** / {TW_MAX['total']}")
                 if row.get("comments"):
                     st.write(f"_Comments:_ {row['comments']}")
             st.markdown("---")
+
+        # Combined averages (if many crews)
         if len(tw_rows) >= 2:
-            avg_vals = [
-                round(sum(r[k] for r in tw_rows) / len(tw_rows), 2)
-                for k in TW_KEYS
-            ]
-            st.markdown("### Combined Averages (all crews)")
-            x = np.arange(len(TW_LABELS))
-            width = 0.35
-            fig, ax = plt.subplots(figsize=(6, 3))
-            ax.bar(x - width/2, avg_vals, width, label="Average Score")
-            ax.bar(x + width/2, TW_MAXES, width, label="Max")
-            ax.set_xticks(x)
-            ax.set_xticklabels(TW_LABELS)
-            ax.set_ylabel("Points")
-            ax.set_title("TEAM Combined Averages vs Max")
-            ax.legend()
-            fig.tight_layout()
-            st.pyplot(fig, use_container_width=True)
+            st.markdown("### Combined Averages")
+            avg_vals = {k: round(sum(r[k] for r in tw_rows)/len(tw_rows), 2)
+                        for k in ["leadership","teamwork","task_management","overall_performance","total"]}
 
+            c1, c2, c3 = st.columns(3)
+            # Three sub-scores side by side again
+            with c1:
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar([0,1], [avg_vals["leadership"], TW_MAX["leadership"]])
+                ax.set_xticks([0,1]); ax.set_xticklabels(["Avg","Max"])
+                ax.set_title("Leadership Avg")
+                fig.tight_layout(); st.pyplot(fig, use_container_width=True)
+            with c2:
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar([0,1], [avg_vals["teamwork"], TW_MAX["teamwork"]])
+                ax.set_xticks([0,1]); ax.set_xticklabels(["Avg","Max"])
+                ax.set_title("Teamwork Avg")
+                fig.tight_layout(); st.pyplot(fig, use_container_width=True)
+            with c3:
+                fig, ax = plt.subplots(figsize=(3,2))
+                ax.bar([0,1], [avg_vals["task_management"], TW_MAX["task_management"]])
+                ax.set_xticks([0,1]); ax.set_xticklabels(["Avg","Max"])
+                ax.set_title("Task Mgmt Avg")
+                fig.tight_layout(); st.pyplot(fig, use_container_width=True)
 
-    # --- PDF Generation (Lazy) ---
+            st.write(f"**Overall Avg:** {avg_vals['overall_performance']} / {TW_MAX['overall_performance']}")
+            st.write(f"**Total Avg:** {avg_vals['total']} / {TW_MAX['total']}")
+
+    # ------------------- PDF -------------------
     def build_team_pdf(df_scores: pd.DataFrame,
-                   team_rows: list[dict],
-                   scenario_code_: str,
-                   sim_name: str) -> io.BytesIO:
+                       team_rows: list[dict],
+                       scenario_code_: str,
+                       sim_name_: str) -> io.BytesIO:
         from reportlab.platypus import (SimpleDocTemplate, Paragraph, Spacer,
                                         Table as RLTable, TableStyle)
         from reportlab.lib.styles import getSampleStyleSheet
@@ -2220,63 +2253,49 @@ def page_team_results():
 
         elems = [
             Paragraph("Team Performance Report", styles["Title"]),
-            Paragraph(f"Simulation: {sim_name}", styles["Normal"]),
+            Paragraph(f"Simulation: {sim_name_}", styles["Normal"]),
             Paragraph(f"Scenario Code: {scenario_code_}", styles["Normal"]),
             Spacer(1, 12),
             Paragraph("Team Scores vs Maximum", styles["Heading2"])
         ]
 
-        # ---- Team scores vs max table ----
         data = [df_scores.columns.tolist()] + df_scores.values.tolist()
         tbl = RLTable(data, hAlign="LEFT")
         tbl.setStyle(TableStyle([
             ("BACKGROUND", (0,0), (-1,0), HexColor("#1F4E78")),
-            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-            ("GRID", (0,0), (-1,-1), 0.25, colors.grey),
+            ("TEXTCOLOR",  (0,0), (-1,0), colors.white),
+            ("GRID",       (0,0), (-1,-1), 0.25, colors.grey),
             ("BACKGROUND", (0,1), (-1,-1), colors.whitesmoke),
-            ("ALIGN", (1,1), (-1,-1), "CENTER"),
+            ("ALIGN",      (1,1), (-1,-1), "CENTER"),
         ]))
         elems.append(tbl)
         elems.append(Spacer(1, 18))
 
-        # ---- TEAM assessments (multiple) ----
         if team_rows:
             elems.append(Paragraph("TEAM Assessments", styles["Heading2"]))
             TW_MAX = {"leadership": 8, "teamwork": 28, "task_management": 8,
-                    "overall_performance": 10, "total": 54}
-
+                      "overall_performance": 10, "total": 54}
             for row in team_rows:
                 elems.append(Paragraph(f"<b>{row['team']}</b>", styles["Heading3"]))
                 txt = (f"Leadership: {row['leadership']} / {TW_MAX['leadership']}, "
-                    f"Teamwork: {row['teamwork']} / {TW_MAX['teamwork']}, "
-                    f"Task Mgmt: {row['task_management']} / {TW_MAX['task_management']}, "
-                    f"Overall: {row['overall_performance']} / {TW_MAX['overall_performance']}, "
-                    f"Total: {row['total']} / {TW_MAX['total']}")
+                       f"Teamwork: {row['teamwork']} / {TW_MAX['teamwork']}, "
+                       f"Task Mgmt: {row['task_management']} / {TW_MAX['task_management']}, "
+                       f"Overall: {row['overall_performance']} / {TW_MAX['overall_performance']}, "
+                       f"Total: {row['total']} / {TW_MAX['total']}")
                 elems.append(Paragraph(txt, styles["Normal"]))
                 if row.get("comments"):
                     elems.append(Paragraph(f"Comments: {row['comments']}", styles["Italic"]))
                 elems.append(Spacer(1, 6))
 
-            # Optional combined averages
-            if len(team_rows) > 1:
-                elems.append(Spacer(1, 12))
-                elems.append(Paragraph("Combined Averages", styles["Heading3"]))
-                avg = lambda k: round(sum(r[k] for r in team_rows)/len(team_rows), 2)
-                avg_txt = (f"Leadership: {avg('leadership')} / {TW_MAX['leadership']}, "
-                        f"Teamwork: {avg('teamwork')} / {TW_MAX['teamwork']}, "
-                        f"Task Mgmt: {avg('task_management')} / {TW_MAX['task_management']}, "
-                        f"Overall: {avg('overall_performance')} / {TW_MAX['overall_performance']}, "
-                        f"Total: {avg('total')} / {TW_MAX['total']}")
-                elems.append(Paragraph(avg_txt, styles["Normal"]))
-
         doc.build(elems)
         buf.seek(0)
         return buf
 
+    st.markdown("---")
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
         if st.button("📄 Generate PDF Report"):
-            pdf_buffer = build_team_pdf(df_team_vs_max, tw_rows, scenario_code, sim_name)
+            pdf_buffer = build_team_pdf(df_team_vs_max, team_rows_for_pdf, scenario_code, sim_name)
             st.download_button(
                 "⬇️ Download Report",
                 data=pdf_buffer,
@@ -2287,6 +2306,7 @@ def page_team_results():
     with col_nav:
         if st.button("🏠 Main Menu"):
             nav_to("welcome")
+
 
 
 def page_simulation_menu():
@@ -2398,7 +2418,7 @@ def page_individual_results():
         scenario_token("Decision 23", fd_key_answers["Decision 23"]),
         scenario_token("Decision 34", fd_key_answers["Decision 34"]),
     ])
-    st.caption(f"Scenario code: `{scenario_code}`")
+    st.caption(f"Scenario code: {scenario_code}")
 
     # ---------- individual_results row ----------
     @st.cache_data(ttl=10)
@@ -2422,7 +2442,6 @@ def page_individual_results():
 
     MED_CATS  = ["basic_life_support", "primary_survey", "secondary_survey", "definitive_care"]
     PROC_CATS = ["crew_roles_communication", "systems_procedural_knowledge"]
-    ALL_CATS = MED_CATS + PROC_CATS
 
     try:
         med_actuals  = [float(ind[c]) for c in MED_CATS]
@@ -2439,11 +2458,11 @@ def page_individual_results():
     def fetch_role_maxes(role_, scen_code):
         try:
             res = (supabase
-                .from_("max_scores")
-                .select("category,max_value,scenario_code,role")
-                .eq("role", role_)
-                .eq("scenario_code", scen_code)
-                .execute())
+                   .from_("max_scores")
+                   .select("category,max_value,scenario_code,role")
+                   .eq("role", role_)
+                   .eq("scenario_code", scen_code)
+                   .execute())
             return res.data or []
         except Exception:
             return []
@@ -2459,15 +2478,14 @@ def page_individual_results():
         "crew_roles_communication":       "crew_roles_communication_total",
         "systems_procedural_knowledge":   "systems_procedural_knowledge_total",
     }
-
-    # Build role_max_map directly
     role_max_map = {r["category"].lower(): float(r["max_value"]) for r in max_rows}
 
-    def cat_max(cat: str) -> float:
-        return role_max_map.get(RAW_TO_TOTAL[cat].lower(), 0.0)
+    def cat_max(cat):
+        key = RAW_TO_TOTAL[cat].lower()
+        return role_max_map.get(key, 0.0)
 
-    med_maxs     = [cat_max(c) for c in MED_CATS]
-    proc_maxs    = [cat_max(c) for c in PROC_CATS]
+    med_maxs  = [cat_max(c) for c in MED_CATS]
+    proc_maxs = [cat_max(c) for c in PROC_CATS]
     med_max_sub  = sum(med_maxs)
     proc_max_sub = sum(proc_maxs)
     max_total    = med_max_sub + proc_max_sub
@@ -2492,18 +2510,6 @@ def page_individual_results():
     # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.markdown("---")
     st.subheader("📝 Your Raw Answers")
-    @st.cache_data(ttl=10)
-    def fetch_my_answers_full(sim_id_, part_id_):
-        res = (supabase
-            .from_("answers")
-            .select("inject,answer_text,response_seconds,penalty,"
-                    "basic_life_support,primary_survey,secondary_survey,"
-                    "definitive_care,crew_roles_communication,systems_procedural_knowledge")
-            .eq("id_simulation", sim_id_)
-            .eq("id_participant", part_id_)
-            .execute())
-        return res.data or []
-
 
     my_answers = fetch_my_answers_full(sim_id, part_id)
 
@@ -2530,10 +2536,7 @@ def page_individual_results():
 
         df_raw["prefix"]   = df_raw["inject"].map(norm)
         df_raw["order_no"] = pd.Categorical(df_raw["prefix"], ORDER, ordered=True)
-        df_raw = df_raw.sort_values("order_no")
-        drop_cols = [c for c in ["order_no","prefix"] if c in df_raw.columns]
-        df_raw = df_raw.drop(columns=drop_cols)
-
+        df_raw = df_raw.sort_values("order_no").drop(columns=["order_no","prefix"])
 
         wanted_cols = ["inject","answer_text","response_seconds","penalty",
                     "basic_life_support","primary_survey","secondary_survey",
@@ -2685,9 +2688,7 @@ def page_individual_results():
 
     with col_nav:
         if st.button("🏠 Main Menu"):
-            nav_to("welcome")
-
-
+            nav_to("welcome")        
 
 
 
