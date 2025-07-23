@@ -1955,40 +1955,52 @@ def page_certify_and_results():
             nav_to("team_results")
             return
 
-def upload_pdf_to_storage(pdf_bytes: bytes, filename: str, bucket: str = "reports") -> str | None:
-    """Return public URL or None."""
+def upload_pdf_to_storage(pdf_bytes: bytes,
+                          filename: str,
+                          bucket: str = "reports") -> tuple[bool, str | None, str]:
+    """
+    Returns (ok, public_url, debug_msg)
+    """
     storage = supabase.storage.from_(bucket)
+    debug = []
 
-    # 1) try native upload (some SDKs accept upsert, some don't)
+    # sanitize path (no leading slash)
+    filename = filename.lstrip("/")
+
+    # Try native upload (most 2.x SDKs accept these kwargs)
     try:
+        debug.append("try upload(upsert=True)")
         storage.upload(
             path=filename,
             file=pdf_bytes,
-            file_options={"content-type": "application/pdf"},  # must be str/bytes
-            upsert=True  # safe to leave; except TypeError below
+            file_options={"content-type": "application/pdf"},
+            upsert=True
         )
-    except TypeError:
-        # SDK doesn't support `upsert`; overwrite manually
+    except TypeError as e:  # SDK doesn't know 'upsert'
+        debug.append(f"TypeError on upload: {e}")
         try:
-            storage.remove([filename])          # needs DELETE policy
+            debug.append("remove old then upload")
+            storage.remove([filename])   # needs RLS delete
             storage.upload(
                 path=filename,
                 file=pdf_bytes,
-                file_options={"content-type": "application/pdf"},
+                file_options={"content-type": "application/pdf"}
             )
-        except Exception:
-            return None
-    except Exception:
-        return None
+        except Exception as e2:
+            debug.append(f"2nd upload failed: {repr(e2)}")
+            return False, None, "\n".join(debug)
+    except Exception as e:
+        debug.append(f"upload failed: {repr(e)}")
+        return False, None, "\n".join(debug)
 
-    # 2) public URL
+    # Get public URL
     try:
-        return storage.get_public_url(filename)
-    except Exception:
-        return None
-
-
-
+        url = storage.get_public_url(filename)
+        debug.append(f"public url: {url}")
+        return True, url, "\n".join(debug)
+    except Exception as e:
+        debug.append(f"get_public_url failed: {repr(e)}")
+        return False, None, "\n".join(debug)
 
 
 def page_team_results():
@@ -2874,13 +2886,14 @@ def page_individual_results():
 
     file_name = f"individual/{sim_id}/{sim_name.replace(' ','_')}_{dm_role.replace(' ','_')}_results.pdf"
 
-    # Auto-upload once
     if not st.session_state.get("_ind_pdf_uploaded"):
-        public_url = upload_pdf_to_storage(pdf_buf.getvalue(), file_name)
-        if public_url:
+        ok, url, dbg = upload_pdf_to_storage(pdf_buf.getvalue(), file_name)
+        if ok:
             st.session_state["_ind_pdf_uploaded"] = True
+            st.success("📤 PDF stored in Supabase.")
         else:
             st.warning("❌ Could not upload PDF to storage.")
+            st.code(dbg) 
 
     col_pdf, col_nav = st.columns([1,1])
     with col_pdf:
