@@ -1071,7 +1071,6 @@ def render_participant_live(pid: int, sim_id: int):
     steps += ["Inject 3"]
     steps += [d["inject"] for d in final]
     st.write("🛠️ DEBUG steps:", steps)
-    st.write("🛠️ DEBUG counts:", step_counts)
 
 
     # 5) Count completions
@@ -1088,7 +1087,8 @@ def render_participant_live(pid: int, sim_id: int):
         else:
             if a.get("answer_text") and a["answer_text"] != "SKIP":
                 step_counts[key] = step_counts.get(key, 0) + 1
-
+    
+    st.write("🛠️ DEBUG counts:", step_counts)
     key_steps = {"Decision 12", "Decision 15"}
 
     # Determine current step
