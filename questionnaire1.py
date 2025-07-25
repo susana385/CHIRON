@@ -393,7 +393,7 @@ decisions1to15 = [
     },
 
     {"inject": "Decision 15 (10:46:00): ", 
-    "text": "TEVs arrive at the crew lock. Due to the high-stress environment, it’s crucial that CAPCOM reminds EVAs of an important step in their training.", "options": ["A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration.","B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock..","C. Instruct CAPCOM to remind the EVs to make sure the door is well closed.","D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals."],
+    "text": "TEVs arrive at the crew lock. Due to the high-stress environment, it’s crucial that CAPCOM reminds EVAs of an important step in their training.", "options": ["A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration.","B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock.","C. Instruct CAPCOM to remind the EVs to make sure the door is well closed.","D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals."],
     "scores":  [
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #A
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #B
