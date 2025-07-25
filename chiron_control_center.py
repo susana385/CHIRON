@@ -508,8 +508,9 @@ def page_create_new_simulation():
                 nav_to("roles_claimed_supervisor")
 
 def roles_claimed_supervisor():
+    if st.button("Go back to the Main Menu"):
+            nav_to("welcome")
     sim_id = st.session_state.simulation_id
-    st_autorefresh(interval=5000, key="wait_for_invite")
 
     # 0) Pull in the current participants in the lobby (usernames) and existing roles_logged
     sim_meta = (
@@ -523,6 +524,7 @@ def roles_claimed_supervisor():
     )
     joined = sim_meta.get("participants_logged", [])
     st.markdown("**Participants in lobby:**")
+    st_autorefresh(interval=5000, key="wait_for_invite")
     for u in joined:
         st.write("• " + u)
     st.markdown("---")
