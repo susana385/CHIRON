@@ -3697,6 +3697,7 @@ tick();
 
 
 def _persist_answer(sim_id, part_id, decision, qdata, answer, penalty=0, elapsed_s=0):
+    st.info("▶️ _persist_answer called with", sim_id, part_id, decision["inject"])
     # compute scoring
     cat_payload = {
         "basic_life_support": 0,
@@ -3745,12 +3746,13 @@ def _persist_answer(sim_id, part_id, decision, qdata, answer, penalty=0, elapsed
         "response_time":  response_time,
     }
     try:
-        supabase.from_("answers") \
+        resp=supabase.from_("answers") \
                 .upsert([payload], on_conflict="id_simulation,id_participant,inject") \
                 .execute()
         supabase.from_("participant") \
                 .update({"current_inject": decision["inject"], "current_answer": payload["answer_text"]}) \
                 .eq("id", part_id).execute()
+        st.write("⬢ upsert result:", resp)
         # Add to local cache to prevent re-fetch
         st.session_state.answers_cache.append({
             "id_simulation": sim_id,
