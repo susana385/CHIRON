@@ -54,22 +54,28 @@ def fetch_snapshot(sim_id: str, last_answer_id: int):
     TTL=2 evita chamadas repetidas em reruns rapidos.
     """
     # ANSWERS DELTA
-    answers_delta = (supabase
-        .from_("answers")
-        .select("id,id_simulation, simulation_name, id_participant, participant_role, inject,answer_text, basic_life_support, primary_survey, secondary_survey, definitive_care, crew_roles_communication, systems_procedural_knowledge, response_seconds,penalty")
-        .eq("id_simulation", sim_id)
-        .gt("id", last_answer_id)
-        .order("id")
-        .execute()
-        .data or [])
+    try:
+        answers_delta = (supabase
+            .from_("answers")
+            .select("id,id_simulation, simulation_name, id_participant, participant_role, inject,answer_text, basic_life_support, primary_survey, secondary_survey, definitive_care, crew_roles_communication, systems_procedural_knowledge, response_seconds,penalty")
+            .eq("id_simulation", sim_id)
+            .gt("id", last_answer_id)
+            .order("id")
+            .execute()
+            .data or [])
 
-    # PARTICIPANTS
-    participants = (supabase
-        .from_("participant")
-        .select("id,id_simulation, id_profile,participant_role,started_at, finished_at, current_inject, current_answer")
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or [])
+        # PARTICIPANTS
+        participants = (supabase
+            .from_("participant")
+            .select("id,id_simulation, id_profile,participant_role,started_at, finished_at, current_inject, current_answer")
+            .eq("id_simulation", sim_id)
+            .execute()
+            .data or [])
+    except Exception as e:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="loading")
+        return
+
 
     return {
         "answers_delta": answers_delta,
@@ -208,10 +214,15 @@ def page_login():
                         auth_params = {"email": login_id, "password": password}
                 else:
                         # look up their email by username
-                    prof = supabase.from_("profiles") \
-                                .select("email") \
-                                .eq("username", login_id) \
-                                .maybe_single().execute()
+                    try:
+                        prof = supabase.from_("profiles") \
+                                    .select("email") \
+                                    .eq("username", login_id) \
+                                    .maybe_single().execute()
+                    except Exception:
+                        st.info("⏳ Loading… please wait a moment.")
+                        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                        return
                     if not getattr(prof, "data", None):
                         st.error("No such username.")
                         return
@@ -233,7 +244,9 @@ def page_login():
                         .execute()
                         )
                 except Exception as e:
-                    st.error(f"Could not load profile: {e}")
+                    st.info("Could not load profile: {e}.⏳ Loading… please wait a moment.")
+                    st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                    return
                 
                 profile = res.data
                 if not profile:
@@ -297,19 +310,23 @@ def page_login():
                     return
 
                 # 4) Insert into profiles
-                
-                sup_res = (
-                    supabase
-                    .from_("profiles")
-                    .insert({
-                        "id":                auth_res.user.id,
-                        "username":          signup_user,
-                        "email":             signup_email,
-                        "role":              role_map[code],
-                        "profile_type_code": code
-                    })
-                    .execute()
-                    )                
+                try:
+                    sup_res = (
+                        supabase
+                        .from_("profiles")
+                        .insert({
+                            "id":                auth_res.user.id,
+                            "username":          signup_user,
+                            "email":             signup_email,
+                            "role":              role_map[code],
+                            "profile_type_code": code
+                        })
+                        .execute()
+                        )       
+                except Exception:
+                    st.info("⏳ Loading… please wait a moment.")
+                    st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                    return         
 
                 if not getattr(sup_res, "data", None):
                     st.error("❌ Failed to create profile.")
@@ -332,7 +349,9 @@ def page_login():
 try:
     res = supabase.from_("profiles").select("id").limit(1).execute()
 except Exception as e:
-    st.error(f"❌ Erro na ligação ao Supabase: {e}")
+    st.info("Erro na ligação ao Supabase: {e}.⏳ Loading… please wait a moment.")
+    st_autorefresh(interval=2000, limit=None, key="retry_answers")
+    
 
 
 def show_logos(logo_paths_with_widths):
@@ -490,7 +509,8 @@ def page_create_new_simulation():
                     )
                     created = ins.data[0]
                 except Exception as e:
-                    st.error(f"❌ Could not create simulation: {e}")
+                    st.info("Could not create simulation: {e}.⏳ Loading… please wait a moment.")
+                    st_autorefresh(interval=2000, limit=None, key="retry_answers")
                     return
 
                 st.success(f"✅ Created '{new_name}' (id={created['id']})")
@@ -513,15 +533,20 @@ def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
 
     # 0) Pull in the current participants in the lobby (usernames) and existing roles_logged
-    sim_meta = (
-        supabase
-        .from_("simulation")
-        .select("participants_logged, roles_logged")
-        .eq("id", sim_id)
-        .single()
-        .execute()
-        .data or {}
-    )
+    try:
+        sim_meta = (
+            supabase
+            .from_("simulation")
+            .select("participants_logged, roles_logged")
+            .eq("id", sim_id)
+            .single()
+            .execute()
+            .data or {}
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
     joined = sim_meta.get("participants_logged", [])
     st.markdown("**Participants in lobby:**")
     st_autorefresh(interval=5000, key="wait_for_invite")
@@ -530,25 +555,35 @@ def roles_claimed_supervisor():
     st.markdown("---")
 
     # 1) Load the raw participant rows (so we can update them)
-    parts = (
-        supabase
-        .from_("participant")
-        .select("id, id_profile, participant_role")
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or []
-    )
+    try:
+        parts = (
+            supabase
+            .from_("participant")
+            .select("id, id_profile, participant_role")
+            .eq("id_simulation", sim_id)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
 
     # 2) Build a map of profile_id → username
     profile_ids = [p["id_profile"] for p in parts]
-    profiles = (
-        supabase
-        .from_("profiles")
-        .select("id, username")
-        .in_("id", profile_ids)
-        .execute()
-        .data or []
-    )
+    try:
+        profiles = (
+            supabase
+            .from_("profiles")
+            .select("id, username")
+            .in_("id", profile_ids)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
     username_map = {prof["id"]: prof["username"] for prof in profiles}
 
     st.subheader("Assign Roles to Participants")
@@ -576,7 +611,8 @@ def roles_claimed_supervisor():
                 # debug:
                 st.write(f"Update pid={pid} →", resp.__dict__)
             except APIError as e:
-                st.error(f"Failed to update participant {pid}: {e.args[0]['message']}")
+                st.info("Failed to update participant {pid}: {e.args[0]['message']}.⏳ Loading… please wait a moment.")
+                st_autorefresh(interval=2000, limit=None, key="retry_answers")
                 return
 
         # 4) Build the new_roles list from your assignments dict
@@ -594,9 +630,8 @@ def roles_claimed_supervisor():
             # Optionally inspect resp:
             # st.write("🔍 simulation update response:", resp.__dict__)
         except APIError as e:
-            payload = e.args[0]
-            st.error("❌ Could not update simulation.roles_logged:")
-            #st.write(payload)
+            st.info("Could not update simulation.roles_logged.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
             return
 
         # 6) Rerun the page so sim_meta (and parts) get re‑loaded with the updated array
@@ -606,11 +641,16 @@ def roles_claimed_supervisor():
     # 7) Only enable “Start Simulation” when all 8 roles are set
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
         if st.button("▶️ Enter Simulation"):
-            supabase.from_("simulation") \
-                    .update({
-                        "status":     "running",
-                        "started_at": datetime.now(timezone.utc).isoformat()
-                    }).eq("id", sim_id).execute()
+            try:
+                supabase.from_("simulation") \
+                        .update({
+                            "status":     "running",
+                            "started_at": datetime.now(timezone.utc).isoformat()
+                        }).eq("id", sim_id).execute()
+            except Exception:
+                st.info("⏳ Loading… please wait a moment.")
+                st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                return
             nav_to("menu_iniciar_simulação_supervisor")
     else:
         st.info(f"{len(parts)} joined; fill all roles to start.")
@@ -698,7 +738,8 @@ def participant_new_simulation():
                     .execute())
             return resp.data or []
         except Exception as e:
-            st.error(f"❌ Could not look up new simulations: {e}")
+            st.info("Could not look up new simulations: {e}.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
             return []
 
     sims = _load_recent_pending(MINUTES_WINDOW)
@@ -759,23 +800,33 @@ def participant_new_simulation():
         my_profile  = st.session_state.profile_id
 
         # 1) fetch current list
-        resp = (
-            supabase
-            .from_("simulation")
-            .select("participants_logged")
-            .eq("id", sim["id"])
-            .single()
-            .execute()
-        )
+        try:
+            resp = (
+                supabase
+                .from_("simulation")
+                .select("participants_logged")
+                .eq("id", sim["id"])
+                .single()
+                .execute()
+            )
+        except Exception:
+            st.info("⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
+            return
         current = resp.data.get("participants_logged") or []
 
         # 2) append if missing
         if my_username not in current:
             current.append(my_username)
-            supabase.from_("simulation") \
-                .update({"participants_logged": current}) \
-                .eq("id", sim["id"]) \
-                .execute()
+            try:
+                supabase.from_("simulation") \
+                    .update({"participants_logged": current}) \
+                    .eq("id", sim["id"]) \
+                    .execute()
+            except Exception:
+                st.info("⏳ Loading… please wait a moment.")
+                st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                return
             
         try:
             resp = (
@@ -789,9 +840,8 @@ def participant_new_simulation():
                 .execute()
             )
         except APIError as e:
-            err = e.args[0]
-            st.error("❌ Could not join simulation:")
-            st.write(err)           # show full dict (code, message, hint, detail)
+            st.info("Could not join simulation.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")        # show full dict (code, message, hint, detail)
             return
         
         # grab the newly‑inserted participant row
@@ -831,25 +881,30 @@ def page_dm_role_claim():
     user_id = st.session_state.user.id
 
     # 1) Load all participant rows for this simulation
-    parts = (
-        supabase
-        .from_("participant")
-        .select("id, id_profile, participant_role")
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or []
-    )
-
-    # 2) Load their usernames
+    try:
+        parts = (
+            supabase
+            .from_("participant")
+            .select("id, id_profile, participant_role")
+            .eq("id_simulation", sim_id)
+            .execute()
+            .data or []
+        )
+        
+        profiles = (
+            supabase
+            .from_("profiles")
+            .select("id, username")
+            .in_("id", profile_ids)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
+    
     profile_ids = [p["id_profile"] for p in parts]
-    profiles = (
-        supabase
-        .from_("profiles")
-        .select("id, username")
-        .in_("id", profile_ids)
-        .execute()
-        .data or []
-    )
     username_map = {p["id"]: p["username"] for p in profiles}
 
     # 3) Find *your* participant record
@@ -940,7 +995,8 @@ def page_dm_questionnaire(key_prefix: str = ""):
                 {"started_at": now_iso}
             ).eq("id", part_id).execute()
         except Exception as e:
-            st.warning(f"⚠️ Could not mark start (continuing): {e}")
+            st.info("Could not mark start (continuing): {e}.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
 
         st.session_state.dm_started_marker = True
 
@@ -973,7 +1029,8 @@ def page_dm_questionnaire(key_prefix: str = ""):
             ).eq("id", part_id).execute()
             st.success("✅ Finish time recorded!")
         except Exception as e:
-            st.error(f"❌ Could not mark finished: {e}")
+            st.info("Could not mark finished: {e}.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
             return
 
         # 4) onward to individual results
@@ -1197,28 +1254,38 @@ def sync_simulation(sim_id):
     """Fetch any new answers/participants from Supabase into the session cache."""
     # 1) Answers as you already have
     last_ts = st.session_state.last_snapshot_ts
-    new_answers = (
-        supabase
-        .from_("answers")
-        .select("*")
-        .gt("created_at", last_ts)
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or []
-    )
+    try:
+        new_answers = (
+            supabase
+            .from_("answers")
+            .select("*")
+            .gt("created_at", last_ts)
+            .eq("id_simulation", sim_id)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
     if new_answers:
         st.session_state.answers_cache.extend(new_answers)
         st.session_state.last_snapshot_ts = max(a["created_at"] for a in new_answers)
 
     # 2) **Participants** (so that roster gets up‑to‑date roles)
-    parts = (
-        supabase
-        .from_("participant")
-        .select("id,participant_role,id_profile")
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or []
-    )
+    try: 
+        parts = (
+            supabase
+            .from_("participant")
+            .select("id,participant_role,id_profile")
+            .eq("id_simulation", sim_id)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
     if parts:
         st.session_state.participants_cache = parts
 
@@ -1473,7 +1540,9 @@ def page_override_interface():
                 nav_to("live_dashboard")
                 return
         except Exception as e:
-            st.error(f"❌ Override failed: {e}")
+            st.info("Override failed: {e}.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
+    
 
     # 9) Delete answer
     if delete_clicked:
@@ -1499,7 +1568,9 @@ def page_override_interface():
                 nav_to("live_dashboard")
                 return
             except Exception as e:
-                st.error(f"❌ Delete failed: {e}")
+                st.info("Delete failed: {e}.⏳ Loading… please wait a moment.")
+                st_autorefresh(interval=2000, limit=None, key="retry_answers")
+    
 
 
 
@@ -1658,14 +1729,19 @@ def page_teamwork_survey():
         st.session_state.teamwork_responses = {team: {} for team in teams}
     resp = st.session_state.teamwork_responses
 
-    existing_rows = (
-        supabase
-        .from_("teamwork")
-        .select("team")
-        .eq("id_simulation", sim_id)
-        .execute()
-        .data or []
-    )
+    try:
+        existing_rows = (
+            supabase
+            .from_("teamwork")
+            .select("team")
+            .eq("id_simulation", sim_id)
+            .execute()
+            .data or []
+        )
+    except Exception:
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
     teams_done = {row["team"] for row in existing_rows}
 
     # 3) Se já tiver as 3, bloqueie o form
@@ -1827,11 +1903,10 @@ def page_teamwork_survey():
                 )
                 # If it didn’t raise, you can also inspect ins_res.data:
                 st.write("🔍 Insert response:", ins_res.__dict__)
-            except APIError as e:
-                err = e.args[0]  # the full PostgREST JSON error
-                st.error("❌ Could not insert TEAM record:")
-                st.write(err)    # show message, code, hint, details
-                return
+            except APIError as e:  # the full PostgREST JSON error
+                st.info("Could not insert TEAM record.⏳ Loading… please wait a moment.")
+                st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                return   
 
         st.success("✅ All three TEAM assessments submitted!")
         nav_to("certify_and_results")
@@ -1909,9 +1984,8 @@ def page_certify_and_results():
         )
         teamwork_rows = res.data or []
     except APIError as e:
-        err = e.args[0]
-        st.error("❌ Could not fetch TEAM assessments:")
-        st.write(err)
+        st.info("Could not fetch TEAM assessments.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
         return
     if len(teamwork_rows) < 3:
         st.warning(f"🔒 Only {len(teamwork_rows)}/3 TEAM assessments submitted. Please complete all three before certification.")
@@ -1954,10 +2028,10 @@ def page_certify_and_results():
         )
         sim_meta = res.data or {}
     except APIError as e:
-        err = e.args[0]
-        st.error("❌ Could not read simulation meta:")
-        st.write(err)
+        st.info("Could not read simulation meta.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
         return
+        
     
     status       = sim_meta.get("status")
 
@@ -1970,10 +2044,15 @@ def page_certify_and_results():
             updates = {}
             if finish_checkbox:
                 updates["status"] = "finished"
-            supabase.from_("simulation") \
-                .update(updates) \
-                .eq("id", sim_id) \
-                .execute()
+            try:
+                supabase.from_("simulation") \
+                    .update(updates) \
+                    .eq("id", sim_id) \
+                    .execute()
+            except Exception:
+                st.info("⏳ Loading… please wait a moment.")
+                st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                return
             st.session_state.simulation_certified = True
             st.success("✅ Simulation certified.")
             st.rerun()
@@ -3057,11 +3136,16 @@ def page_running_simulations():
             return
 
         # fetch participant record
-        part_res = (supabase.from_('participant')
-                    .select('id, participant_role')
-                    .eq('id_profile', ss.user.id)
-                    .eq('id_simulation', sim['id'])
-                    .maybe_single().execute())
+        try:
+            part_res = (supabase.from_('participant')
+                        .select('id, participant_role')
+                        .eq('id_profile', ss.user.id)
+                        .eq('id_simulation', sim['id'])
+                        .maybe_single().execute())
+        except Exception:
+            st.info("⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
+            return
         part = getattr(part_res, 'data', None)
         if not part:
             st.error('You have not joined this simulation.')
@@ -3101,15 +3185,20 @@ def page_running_simulations():
         all_steps += [q['inject'] for q in final]
 
         # fetch answered injects for this participant
-        ans_resp = (
-            supabase
-            .from_("answers")
-            # fetch both the label *and* the answer text
-            .select("inject, answer_text")
-            .eq("id_simulation",  sim["id"])
-            .eq("id_participant", part["id"])
-            .execute()
-        )
+        try:
+            ans_resp = (
+                supabase
+                .from_("answers")
+                # fetch both the label *and* the answer text
+                .select("inject, answer_text")
+                .eq("id_simulation",  sim["id"])
+                .eq("id_participant", part["id"])
+                .execute()
+            )
+        except Exception:
+            st.info("⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="retry_answers")
+            return
         raw = getattr(ans_resp, 'data', []) or []
 
         # normalize helper
@@ -3198,10 +3287,8 @@ def page_past_simulations():
             .execute()
         )
     except Exception as e:
-        import traceback, json
-        st.error("Failed to load simulations from Supabase.")
-        st.code(json.dumps(getattr(e, "args", [""]), indent=2))
-        st.code("".join(traceback.format_exc())[-800:])
+        st.info("Failed to load simulations from Supabase.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
         return
 
     if getattr(res, "error", None):
@@ -3235,15 +3322,20 @@ def page_past_simulations():
             with col1:
                 if st.button("👤 My Results", key=f"ind_{sim['id']}"):
                     # fetch this participant row
-                    part_resp = (
-                        supabase
-                        .from_("participant")
-                        .select("id, participant_role")
-                        .eq("id_simulation", sim["id"])
-                        .eq("id_profile", profile_id)
-                        .maybe_single()
-                        .execute()
-                    )
+                    try:
+                        part_resp = (
+                            supabase
+                            .from_("participant")
+                            .select("id, participant_role")
+                            .eq("id_simulation", sim["id"])
+                            .eq("id_profile", profile_id)
+                            .maybe_single()
+                            .execute()
+                        )
+                    except Exception:
+                        st.info("⏳ Loading… please wait a moment.")
+                        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                        return
                     if not part_resp.data:
                         st.error("You did not participate in this simulation.")
                         return
@@ -3264,13 +3356,18 @@ def page_past_simulations():
 
             with col2:
                 # choose a role to inspect
-                part_resp = (
-                    supabase
-                    .from_("participant")
-                    .select("id, participant_role")
-                    .eq("id_simulation", sim["id"])
-                    .execute()
-                )
+                try:
+                    part_resp = (
+                        supabase
+                        .from_("participant")
+                        .select("id, participant_role")
+                        .eq("id_simulation", sim["id"])
+                        .execute()
+                    )
+                except Exception:
+                    st.info("⏳ Loading… please wait a moment.")
+                    st_autorefresh(interval=2000, limit=None, key="retry_answers")
+                    return
                 if part_resp.error:
                     st.error(f"Couldn’t load participants: {part_resp.error.message}")
                     return

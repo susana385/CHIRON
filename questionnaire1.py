@@ -3211,6 +3211,7 @@ def show_tlx_questionnaire():
             existing = getattr(res, "data", None)
         except Exception as e:
             st.warning(f"Prefetch TLX failed (using defaults): {e}")
+            st_autorefresh(interval=2000, limit=None, key="loading")
             existing = None
 
         if existing:
@@ -3265,7 +3266,8 @@ def show_tlx_questionnaire():
                 .upsert([payload], on_conflict="id_simulation,id_participant") \
                 .execute()
         except Exception as e:
-            st.error(f"❌ Could not save TLX: {e}")
+            st.error(f"❌ Could not save TLX: {e}.Loading, please wait...")
+            st_autorefresh(interval=2000, limit=None, key="loading")
             st.session_state._tlx_saving = False
             return
 
@@ -3340,7 +3342,8 @@ def preload_participants(sim_id):
             pid_map[row["participant_role"]] = row["id"]
             rmap[row["id"]] = row["participant_role"]
     except Exception as e:
-        st.warning(f"Could not preload participants: {e}")
+        st.warning(f"Could not preload participants: {e}. Loading, Please wait...")
+        st_autorefresh(interval=2000, limit=None, key="loading")
 
 
 # ---------- Indexing rows into cache ----------
@@ -3431,6 +3434,8 @@ def get_role_decision_answer(inject_prefix: str, role: str, use_db_fallback: boo
         return None
     except Exception:
         cooldown[miss_key] = now
+        st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="loading")
         return None
 
 def resilient_lookup(fn, attempts=4, base=0.05):
@@ -3621,7 +3626,8 @@ def _persist_skip(sim_id, part_id, inject_label):
             .upsert([payload], on_conflict="id_simulation,id_participant,inject") \
             .execute()
     except Exception as e:
-        st.warning(f"Could not persist SKIP for {inject_label}: {e}")
+        st.info(f"Could not persist SKIP for {inject_label}: {e}. ⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="loading")
 
 def _render_key_fd_decision(sim_id, part_id, role, decision, qdata, prefix):
     # if FD: show input; else wait
@@ -3793,7 +3799,8 @@ def _persist_answer(sim_id, part_id, decision, qdata, answer, penalty=0, elapsed
                 _cache_answer_row(row)
 
     except Exception as e:
-        st.error(f"❌ Could not save answer: {e}")
+        st.info("Could not save answer: {e}.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="loading")
 
 def _render_already_answered(prefix, inject_full, answer, is_inject, sim_id):
     st.subheader(inject_full)
@@ -3888,7 +3895,8 @@ def _render_inject(sim_id, part_id, inject_full, prefix):
                     _cache_answer_row(row)
 
         except Exception as e:
-            st.error(f"❌ Could not mark {prefix}: {e}")
+            st.info("Could not mark {prefix}: {e}.⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="loading")
         st.rerun()
 
 def _maybe_autopick(sim_id, part_id, decision, qdata, prefix, options):
@@ -4138,7 +4146,10 @@ def _persist_inject_done(sim_id, part_id, inject_label):
                 _cache_answer_row(row)
 
     except Exception as e:
-        st.error(f"❌ Could not mark {inject_label}: {e}")
+        st.info("Could not mark {inject_label}: {e}.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="loading")
+
+
 
 def handle_inject(inject_number: int):
     sim_id  = st.session_state.simulation_id
@@ -4302,12 +4313,18 @@ def _resolve_participant_id(sim_id, role):
         return participant_ids[role]
 
     def _query():
-        res = (supabase.from_("participant")
-               .select("id")
-               .eq("id_simulation", sim_id)
-               .eq("participant_role", role)
-               .maybe_single()
-               .execute())
+        try:
+            res = (supabase.from_("participant")
+                .select("id")
+                .eq("id_simulation", sim_id)
+                .eq("participant_role", role)
+                .maybe_single()
+                .execute())
+        except:
+            st.info("⏳ Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="loading")
+            return
+
         row = getattr(res, "data", None)
         if row:
             participant_ids[role] = row["id"]
@@ -4336,7 +4353,10 @@ def preload_answers(sim_id):
         for r in rows:
             _cache_answer_row(r)
     except Exception as e:
-        st.warning(f"Preload answers failed: {e}")
+        st.info("Preload answers failed: {e}.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="loading")
+
+
 
 def handle_final_page():
     """Stage 6: show post‑simulation question, record answer, then go to TLX."""
@@ -4367,8 +4387,10 @@ def handle_final_page():
                 "penalty":         0
             }]).execute()
         except Exception as e:
-            st.error(f"❌ Could not record your answer: {e}")
+            st.info("Could not record your answer: {e}⏳. Loading… please wait a moment.")
+            st_autorefresh(interval=2000, limit=None, key="loading")
             return
+
 
         # advance to TLX
         st.session_state.dm_stage = 7
