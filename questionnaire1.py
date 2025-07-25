@@ -3935,7 +3935,6 @@ def _render_standard_decision(sim_id, part_id, role, decision, qdata, inject_ful
     else:
         # no options → use the role‑specific prompt as the “answer”
         prompt_text = qdata.get("text", "")
-        st.info(f"*Note:* this role has no choices here, so we’re showing your prompt above as your “answer.”")
         st.write(prompt_text)
         ans = prompt_text
         valid = True
