@@ -51,17 +51,12 @@ def is_decision_answered(prefix: str) -> bool:
         return False
 
 
-
-
 def vary_vital(base, min_val, max_val, unit=""):
     variation = random.randint(-2, 2)
     value = base + variation
     value = max(min_val, min(value, max_val))
     return f"{value}{unit}"
 
-
-# note: st.set_page_config should only be called once at the very top of your app
-# so omit it here if already set in chiron_control_center
 
 # Custom CSS for styling
 def inject_css():
@@ -93,6 +88,25 @@ def inject_css():
         unsafe_allow_html=True
     )
 
+@st.cache_data
+def load_participants(sim_id):
+    """Returns list of {role, username} for this simulation."""
+    resp = (
+        supabase
+        .from_("participant")
+        .select("participant_role, profile!inner(username)")
+        .eq("id_simulation", sim_id)
+        .execute()
+    )
+    out = []
+    for row in (resp.data or []):
+        out.append({
+            "role": row["participant_role"],
+            "username": row["profile"]["username"],
+        })
+    return out
+
+
 # Define astronaut data
 astronauts = [
     {"name": "Mariana Peyroteo", "role": "FE-1(EV1)", "age": 50, "gender": "Female", "status": "Normal"},
@@ -103,6 +117,9 @@ astronauts = [
 
 
 def run(simulation_name: str, updates:int=10, delay:float=1.0):
+    sim_id = st.session_state["simulation_id"]
+    astronauts = load_participants(sim_id)
+
     from streamlit_autorefresh import st_autorefresh
     st_autorefresh(interval=30000, limit=None, key="vitals_autorefresh")
 
@@ -123,8 +140,11 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
     # astronaut_list: uma lista com os astronautas ativos
     cols = st.columns(len(astronauts))
 
+    cols = st.columns(len(astronauts), gap="small")
     for col, astro in zip(cols, astronauts):
         with col:
+            # show their username and role
+            st.markdown(f"**{astro['username']}**  \n_{astro['role']}_")
             effects_all = st.session_state.get("vital_effects", {})
             effects      = effects_all.get(astro["role"], {})
             status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-3(EV2)"] else "offline")

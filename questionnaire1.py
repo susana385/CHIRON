@@ -3770,7 +3770,6 @@ def _persist_answer(sim_id, part_id, decision, qdata, answer, penalty=0, elapsed
         supabase.from_("participant") \
                 .update({"current_inject": decision["inject"], "current_answer": payload["answer_text"]}) \
                 .eq("id", part_id).execute()
-        st.write("⬢ upsert result:", resp)
         # Add to local cache to prevent re-fetch
         st.session_state.answers_cache.append({
             "id_simulation": sim_id,
