@@ -3111,12 +3111,23 @@ def page_running_simulations():
             m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', x.strip())
             return m.group(1) if m else x.strip()
 
-        seen = {norm(r['inject']) for r in raw}
+        seen = set()
+        for r in raw:
+            label = norm(r['inject'])
+            ans_txt = r.get('answer_text') or ""
+            if label == "Initial Situation" or label.startswith("Inject"):
+                if ans_txt == "DONE":
+                    seen.add(label)
+            else:
+                # a real decision answer
+                if ans_txt and ans_txt.upper() != "SKIP":
+                    seen.add(label)
         # include FD-only decisions as answered
-        for fd in ('Decision 12','Decision 15'):
-            if get_role_decision_answer(fd,'FD') is not None:
+        for fd in ("Decision 12", "Decision 15"):
+            if get_role_decision_answer(fd, "FD") is not None:
                 seen.add(fd)
-        if ss.dm_role != 'FD': seen |= {'Decision 12','Decision 15'}
+        if ss.dm_role != "FD":
+            seen |= {"Decision 12", "Decision 15"}
 
         # find next_step
         next_step = None
