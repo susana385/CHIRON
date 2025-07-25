@@ -165,7 +165,7 @@ try:
         questionnaire1.decision16_12A,
         questionnaire1.decisions17to18_12B,
         questionnaire1.decisions17to19_12C,
-        questionnaire1.decisions17to26.values(),
+        *questionnaire1.decisions17to26.values(),
     ]
     for block in all_blocks:
         for d in block:
