@@ -605,7 +605,7 @@ def roles_claimed_supervisor():
 
     # 7) Only enable “Start Simulation” when all 8 roles are set
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
-        if st.button("▶️ Start Simulation"):
+        if st.button("▶️ Enter Simulation"):
             supabase.from_("simulation") \
                     .update({
                         "status":     "running",
@@ -866,7 +866,7 @@ def page_dm_role_claim():
 
     # 7) Only let them start once everyone has a role
     if all(p.get("participant_role") for p in parts) and len(parts) == 8:
-        if st.button("▶️ Start Simulation"):
+        if st.button("▶️ Enter Simulation"):
             me = next(p for p in parts if p["id_profile"] == st.session_state.user.id)
             # store the id and role so the next page has context
             st.session_state.participant_id = me["id"]
@@ -3230,7 +3230,7 @@ def init_state():
     st.session_state.setdefault('simulation_certified', False)
     st.session_state.setdefault('role', None)
     st.session_state.setdefault('simulation_name', '')
-    st.session_state.setdefault("dm_stage",           1)
+    st.session_state.setdefault("dm_stage",0)
     st.session_state.setdefault("dm_started_marker", False)
     st.session_state.setdefault('teamwork_submitted', False)
     st.session_state.setdefault('dm_finished', False)
