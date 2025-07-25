@@ -4563,7 +4563,7 @@ def apply_vital_consequences(answer_text: dict):
         "bp": "120/72 mmHg", "spo2": "98%", "hr": "85 bpm", "rr": "15 rpm",
         "co2": "40 mmHg", "ecg": "Normal", "status": "online"
     }
-    effects["FE-2(EV2)"] = {
+    effects["FE-3(EV2)"] = {
         "bp": "118/70 mmHg", "spo2": "97%", "hr": "82 bpm", "rr": "14 rpm",
         "co2": "39 mmHg", "ecg": "Normal", "status": "online"
     }
