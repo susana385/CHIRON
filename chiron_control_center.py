@@ -846,13 +846,13 @@ def page_dm_role_claim():
     me = next((p for p in parts if p["id_profile"] == user_id), None)
     if me is None:
         st.error("Waiting for the supervisor to invite you into this simulation…")
-        st_autorefresh(interval=3_000, key="wait_for_invite")
+        st_autorefresh(interval=5000, key="wait_for_invite")
         return
 
     # 4) If you haven’t been assigned yet, wait & auto‑refresh
     if not me.get("participant_role"):
         st.info("Waiting for your supervisor to assign your role…")
-        st_autorefresh(interval=3_000, key="wait_for_role")
+        st_autorefresh(interval=5000, key="wait_for_role")
         return
 
     # 5) Show your role
