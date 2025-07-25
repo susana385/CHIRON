@@ -3503,7 +3503,7 @@ def display_inject2():
     txt = INJECT2_MAP.get(k)
 
     # Override for FE‑1(EV1) if we have an entry
-    if role == "FE-1(EV1)":
+    if role == "FE-1 (EVA1)":
         txt = INJECT2_MAP_FE1.get(k, txt)
 
     if txt:
