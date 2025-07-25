@@ -4,7 +4,7 @@ import data_simulation          # your wrapper now exposes run(simulation_name) 
 import questionnaire1           # sets st.session_state['dm_finished']=True
 import os, json
 import pandas as pd
-from questionnaire1 import  decisions1to15, decision16_12A, decisions17to18_12B, decisions17to19_12C, decisions17to26
+from questionnaire1 import show_initial_situation, decisions1to15, decision16_12A, decisions17to18_12B, decisions17to19_12C, decisions17to26
 import base64
 from questionnaire1 import apply_vital_consequences
 import matplotlib.pyplot as plt
@@ -1104,9 +1104,7 @@ def render_participant_live(pid: int, sim_id: int):
 
     # Display logic based on current
     if current == "Initial Situation":
-        prompt = inject_prompt_map.get(("Initial Situation", None), "")
-        st.markdown(f"**Initial Situation**")
-        st.write(prompt)
+        show_initial_situation()
         return
     if current == "Finished":
         st.success("✅ All steps completed.")

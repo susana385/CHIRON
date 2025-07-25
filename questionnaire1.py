@@ -3495,8 +3495,6 @@ def display_inject2():
 # --------------------------------------------------------- Show Injects ----------------------------------------------------
 
 def show_initial_situation():
-    sim_id  = st.session_state.simulation_id
-    part_id = st.session_state.participant_id
     st.subheader("🚀 Initial Situation")  
     st.write("For the 17th day of the mission, an EVA is planned to install a component on a radiation collection device. **EVA Crew:** EVA1 (Mission Specialist) & EVA2 (Flight Engineer) **Inside Crew:** Commander (CMO) & FE-3(IV1) (IV Crew Member).")
 
