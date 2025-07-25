@@ -104,7 +104,7 @@ astronauts = [
 
 def run(simulation_name: str, updates:int=10, delay:float=1.0):
     from streamlit_autorefresh import st_autorefresh
-    st_autorefresh(interval=10000, limit=None, key="vitals_autorefresh")
+    st_autorefresh(interval=30000, limit=None, key="vitals_autorefresh")
 
     inject_css()
     st.session_state.setdefault("vital_effects", {})
