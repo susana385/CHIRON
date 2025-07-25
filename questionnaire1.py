@@ -3460,13 +3460,50 @@ def classify_decision13(ans: str | None) -> str | None:
     return None
 
 INJECT2_MAP = {
-    ("A","A"):      "(10:40:00): The repressurization has finished successfully at 12 psi. EVA 1 shows signs of confusion.",
-    ("A","OTHER"):  "(10:40:00): EVA 1 showed confusion due to breathing issues, now chest pain and dyspnea.",
-    ("B","A"):      "(10:45:00): EVA 1 shows confusion and difficulty understanding what’s happening.",
-    ("B","OTHER"):  "(10:45:00): EVA 1 shows confusion and shortness of breath due to lack of pressure adaptation.",
-    ("C","A"):      "(10:35:00): EVA 1 has discomfort in ears and sinuses.",
-    ("C","OTHER"):  "(10:35:00): EVA 1 shows chest pain and shortness of breath due to confusion.",
+    ("A","A"):      "(10:56:00) The repressurization has finished successfully at 12 psi.",
+    ("A","OTHER"):  "(10:56:00) The repressurization has finished successfully at 12 psi.",
+    ("B","A"):      "(11:01:00) The repressurization has finished successfully.",
+    ("B","OTHER"):  "(11:01:00) The repressurization has finished successfully.",
+    ("C","A"):      "(10:51:00) The repressurization has finished successfully.",
+    ("C","OTHER"):  "(10:51:00) The repressurization has finished successfully.",
 }
+
+INJECT2_MAP_FE1 = {
+    ("A","A"):      "(10:56:00) The repressurization has finished successfully at 12 psi. You feel confused and from now on you can’t understand what is happening.",
+    ("A","OTHER"):  "(10:56:00) The repressurization has finished successfully at 12 psi.You feel confused and pain in your chest. From now on you can’t understand what is happening.",
+    ("B","A"):      "(11:01:00) The repressurization has finished successfully.You feel confused and from now on you can’t understand what is happening.",
+    ("B","OTHER"):  "(11:01:00) The repressurization has finished successfully.You feel confused and pain in your chest. From now on you can’t understand what is happening.",
+    ("C","A"):      "(10:51:00) The repressurization has finished successfully.You feel confused and from now on you can’t understand what is happening.",
+    ("C","OTHER"):  "(10:51:00) The repressurization has finished successfully.You feel confused, pain in your chest and shortness of breath. From now on you can’t understand what is happening.",
+}
+
+
+
+def display_inject2():
+    st.subheader("📌 Inject 2")
+    # Figure out who’s viewing
+    role = st.session_state.get("dm_role") or st.session_state.get("user_role")
+
+    a12  = get_role_decision_answer("Decision 12", "FD")
+    a15  = get_role_decision_answer("Decision 15", "FD")
+    if not a12 or not a15:
+        st.info("⏳ Waiting for FD to answer the key decision…")
+        return
+
+    # Build the key for both maps
+    k = (classify_decision7(a12), classify_decision13(a15))
+
+    # Start with the standard text
+    txt = INJECT2_MAP.get(k)
+
+    # Override for FE‑1(EV1) if we have an entry
+    if role == "FE-1(EV1)":
+        txt = INJECT2_MAP_FE1.get(k, txt)
+
+    if txt:
+        st.write(txt)
+    else:
+        st.warning("No matching Inject 2 narrative for this combination.")
 
 INJECT3_TIME = {
     ("A", False): "12:00:00",
@@ -3476,22 +3513,6 @@ INJECT3_TIME = {
     ("B", True):  "12:25:00",
     ("C", True):  "12:12:00",
 }
-
-def display_inject2():
-    st.subheader("📌 Inject 2")
-    a12  = get_role_decision_answer("Decision 12", "FD")
-    a15 = get_role_decision_answer("Decision 15", "FD")
-    if not a12 or not a15:
-        st.info("⏳ Waiting for FD to answer the key decision...")
-        return
-    k = (classify_decision7(a12), classify_decision13(a15))
-    txt = INJECT2_MAP.get(k)
-    if txt:
-        st.write(txt)
-    else:
-        st.warning("No matching Inject 2 narrative for this combination.")
-
-
 # --------------------------------------------------------- Show Injects ----------------------------------------------------
 
 def show_initial_situation():
@@ -4486,21 +4507,21 @@ def get_inject_text(inject_id: str) -> str:
             "Suddenly EVA-1 reports numbness in his right arm …"
         )
     elif inject_id == "Inject 2":
-        answer_7  = get_role_decision_answer("Decision 12", "FD")
-        answer_13 = get_role_decision_answer("Decision 15", "FD")
+        answer_12  = get_role_decision_answer("Decision 12", "FD")
+        answer_15 = get_role_decision_answer("Decision 15", "FD")
         inject2_text = ""
-        if answer_7 and answer_13:
-            if (answer_7 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and answer_13 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
+        if answer_12 and answer_15:
+            if (answer_12 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
                 return "(10:40:00): The repressurization has finished successfully at 12 psi. EVA 1 shows signs of confusion."
-            elif (answer_7 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and (answer_13 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_13 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_13 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
+            elif (answer_12 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and (answer_15 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
                 return "(10:40:00): EVA 1 showed confusion due to breathing issues, now presenting sharp chest pain and shortness of breath."
-            elif (answer_7 == "B.Normal repressurization (~15 min.)" and answer_13 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
+            elif (answer_12 == "B.Normal repressurization (~15 min.)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
                 return "(10:45:00): EVA 1 shows confusion and difficulty understanding what’s happening."
-            elif (answer_7 == "B.Normal repressurization (~15 min.)" and (answer_13 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_13 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_13 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
+            elif (answer_12 == "B.Normal repressurization (~15 min.)" and (answer_15 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
                 return"(10:45:00): EVA 1 shows confusion and shortness of breath due to lack of pressure adaptation."
-            elif (answer_7 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and answer_13 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
+            elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
                 return "(10:35:00): EVA 1 has discomfort in ears and sinuses."
-            elif (answer_7 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and (answer_13 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_13 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_13 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
+            elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and (answer_15 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
                 return"(10:35:00): EVA 1 shows chest pain and shortness of breath due to confusion."
     elif inject_id == "Inject 3":
             return("""(11:05:00)
