@@ -509,7 +509,7 @@ def page_create_new_simulation():
 
 def roles_claimed_supervisor():
     sim_id = st.session_state.simulation_id
-    st_autorefresh(interval=3_000, key="wait_for_invite")
+    st_autorefresh(interval=5000, key="wait_for_invite")
 
     # 0) Pull in the current participants in the lobby (usernames) and existing roles_logged
     sim_meta = (
