@@ -98,7 +98,7 @@ astronauts = [
     {"name": "Mariana Peyroteo", "role": "FE-1(EV1)", "age": 50, "gender": "Female", "status": "Normal"},
     {"name": "Ana Martins", "role": "FE-3(EV2)", "age": 45, "gender": "Female", "status": "Warning"},
     {"name": "Joana Godinho", "role": "Commander (CMO,IV2)", "age": 47, "gender": "Female", "status": "Critical"},
-    {"name": "Mariana Figueiras", "role": "FE-3(IV1)", "age": 40, "gender": "Female", "status": "Normal"},
+    {"name": "Mariana Figueiras", "role": "FE-2(IV1)", "age": 40, "gender": "Female", "status": "Normal"},
 ]
 
 
@@ -127,7 +127,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
         with col:
             effects_all = st.session_state.get("vital_effects", {})
             effects      = effects_all.get(astro["role"], {})
-            status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-2(EV2)"] else "offline")
+            status = effects.get("status", "online" if astro["role"] in ["FE-1(EV1)", "FE-3(EV2)"] else "offline")
 
             # Fase inicial: gerar valores variáveis até decisão 7
             _ensure_answer_indexes()
