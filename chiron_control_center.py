@@ -1072,6 +1072,9 @@ def render_participant_live(pid: int, sim_id: int):
     steps += [d["inject"] for d in final]
 
     # 5) Count completions
+    # inside render_participant_live(pid, sim_id):
+    sync_simulation_state(sim_id)
+
     sim_answers = [a for a in st.session_state.answers_cache if a["id_simulation"] == sim_id]
     step_counts = {}
     for a in sim_answers:
@@ -1098,8 +1101,9 @@ def render_participant_live(pid: int, sim_id: int):
 
     # Display logic based on current
     if current == "Initial Situation":
-        txt = getattr(questionnaire1, "initial_situation_text", "Initial Situation")
-        st.write(txt)
+        prompt = inject_prompt_map.get(("Initial Situation", None), "")
+        st.markdown(f"**Initial Situation**")
+        st.write(prompt)
         return
     if current == "Finished":
         st.success("✅ All steps completed.")
@@ -1133,7 +1137,9 @@ def render_participant_live(pid: int, sim_id: int):
 
     # Render inject completion status
     if current.startswith("Inject"):
+        prompt = inject_prompt_map.get((current, None), "")
         st.markdown(f"### {current}")
+        st.write(prompt)
         row = my_answer_map.get(current)
         done = row and row.get("answer_text") == "DONE"
         cnt = step_counts.get(current, 0)
@@ -2942,6 +2948,7 @@ def fetch_simulations_with_retry():
 
 def page_running_simulations():
     st.header("🏃 Running Simulations")
+    sync_simulation_state(st.session_state.simulation_id)
     if st.button("Go back to the Main Menu"):
         nav_to("welcome")
         return
