@@ -3098,11 +3098,15 @@ def page_running_simulations():
         all_steps += [q['inject'] for q in final]
 
         # fetch answered injects for this participant
-        ans_resp = (supabase.from_('answers')
-                    .select('inject')
-                    .eq('id_simulation', sim['id'])
-                    .eq('id_participant', part['id'])
-                    .execute())
+        ans_resp = (
+            supabase
+            .from_("answers")
+            # fetch both the label *and* the answer text
+            .select("inject, answer_text")
+            .eq("id_simulation",  sim["id"])
+            .eq("id_participant", part["id"])
+            .execute()
+        )
         raw = getattr(ans_resp, 'data', []) or []
 
         # normalize helper
