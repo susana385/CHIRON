@@ -133,8 +133,8 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
             _ensure_answer_indexes()
             preload_answers(st.session_state.get("simulation_id"))
 
-            answered7 = is_decision_answered("Decision 7")
-            if not answered7:
+            answered1 = is_decision_answered("Decision 1")
+            if not answered1:
                 if "dynamic_vitals" not in st.session_state:
                     st.session_state.dynamic_vitals = {}
 
