@@ -4427,15 +4427,19 @@ def run(supabase, simulation_name: str, role: str):
         st.error("Missing simulation/participant.")
         return
 
-    _ensure_decision_index()
-    _ensure_answer_indexes()
-
     if not st.session_state.get("_participants_loaded"):
         preload_participants(sim_id)
         st.session_state._participants_loaded = True
 
     # Preload answers once per stage
-    preload_answers(sim_id)
+    try:
+        _ensure_decision_index()
+        _ensure_answer_indexes()
+        preload_answers(sim_id)
+    except Exception as e:
+        # you could check isinstance(e, httpx.ReadError) if you want to be more specific
+        st.info("⏳ Loading… please wait a moment.")
+        return
     if not st.session_state.get("_stage_locked"):
         _derive_stage_if_needed()
     stage = st.session_state.dm_stage 

@@ -902,7 +902,15 @@ def page_dm_questionnaire(key_prefix: str = ""):
         if st.button("⬅️ Back to Main Menu"):
             nav_to("welcome")
         return
-    sync_simulation_state(sim_id)
+    
+
+    try:
+        sync_simulation_state(sim_id)
+    except Exception as e:
+        # you could check isinstance(e, httpx.ReadError) if you want to be more specific
+        st.info("⏳ Loading… please wait a moment.")
+        return
+    
     answer_idx = build_answer_index()
 
     col1, col2, col3 = st.columns([3, 3, 1])
@@ -943,13 +951,6 @@ def page_dm_questionnaire(key_prefix: str = ""):
     if stage not in (1, 3, 5) \
     and not isinstance(st.session_state.get("current_decision_index"), int):
         st.session_state.current_decision_index = 1
-
-    # def _cache_append_answer(row):
-    #     st.session_state.answers_cache.append(row)
-    #     st.session_state.last_answer_id = max(
-    #         st.session_state.last_answer_id,
-    #         row.get("id", st.session_state.last_answer_id)
-    #     )
 
     questionnaire1.run(
         supabase,
