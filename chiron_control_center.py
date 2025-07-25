@@ -1070,6 +1070,9 @@ def render_participant_live(pid: int, sim_id: int):
     steps += [d["inject"] for d in branch]
     steps += ["Inject 3"]
     steps += [d["inject"] for d in final]
+    st.write("🛠️ DEBUG steps:", steps)
+    st.write("🛠️ DEBUG counts:", step_counts)
+
 
     # 5) Count completions
     # inside render_participant_live(pid, sim_id):
@@ -1079,7 +1082,7 @@ def render_participant_live(pid: int, sim_id: int):
     step_counts = {}
     for a in sim_answers:
         key = normalize_inject(a["inject"])
-        if key.startswith("Inject"):
+        if key == "Initial Situation" or key.startswith("Inject"):
             if a.get("answer_text") == "DONE":
                 step_counts[key] = step_counts.get(key, 0) + 1
         else:
@@ -1184,7 +1187,37 @@ def compute_step_counts(sim_id, answers):
             if a["answer_text"] and a["answer_text"] != "SKIP":
                 counts[pref] = counts.get(pref, 0) + 1
     return counts
-    
+
+def sync_simulation(sim_id):
+    """Fetch any new answers/participants from Supabase into the session cache."""
+    # 1) Answers as you already have
+    last_ts = st.session_state.last_snapshot_ts
+    new_answers = (
+        supabase
+        .from_("answers")
+        .select("*")
+        .gt("created_at", last_ts)
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or []
+    )
+    if new_answers:
+        st.session_state.answers_cache.extend(new_answers)
+        st.session_state.last_snapshot_ts = max(a["created_at"] for a in new_answers)
+
+    # 2) **Participants** (so that roster gets up‑to‑date roles)
+    parts = (
+        supabase
+        .from_("participant")
+        .select("id,participant_role,id_profile")
+        .eq("id_simulation", sim_id)
+        .execute()
+        .data or []
+    )
+    if parts:
+        st.session_state.participants_cache = parts
+
+
 
 def page_live_dashboard():
     st.header("Supervisor Live Dashboard")
@@ -1199,7 +1232,7 @@ def page_live_dashboard():
         return
 
     # 1) Sync snapshot FIRST (answers + participants)
-    sync_simulation_state(sim_id)          # respects ttl
+    sync_simulation(sim_id)          # respects ttl
     # build_answer_index() only if you actually use it for cross lookups here
     # answer_idx = build_answer_index()
 
