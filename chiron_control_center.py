@@ -886,7 +886,7 @@ def page_dm_role_claim():
             st.session_state.all_questions        = []
             st.write("🔍 [DEBUG join] about to enter questionnaire, dm_stage =", st.session_state.get("dm_stage"))
             st.write("🔍 [DEBUG join] answers dict:", st.session_state.get("answers"))
-            #nav_to("dm_questionnaire")
+            nav_to("dm_questionnaire")
     else:
         st.info(f"Waiting until all {len(parts)} participants have roles…")
 

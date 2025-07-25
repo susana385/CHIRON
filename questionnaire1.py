@@ -4422,9 +4422,10 @@ def run(supabase, simulation_name: str, role: str):
          "current_decision_index:", st.session_state.current_decision_index,
          "len(all_questions):", len(st.session_state.get("all_questions", [])))
 
-
+    st.write("🔍 [DEBUG run] stage =", st.session_state.get("dm_stage"))
+    st.write("🔍 [DEBUG run] answers:", st.session_state.get("answers"))
     if stage == 0:
-        show_initial_situation()
+        handle_initial_start()
         return
     elif stage == 1:
         handle_decision_block()
