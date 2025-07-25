@@ -2983,7 +2983,6 @@ def fetch_simulations_with_retry():
 
 def page_running_simulations():
     st.header("🏃 Running Simulations")
-    sync_simulation_state(st.session_state.simulation_id)
     if st.button("Go back to the Main Menu"):
         nav_to("welcome")
         return
