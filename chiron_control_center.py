@@ -3137,40 +3137,37 @@ def page_running_simulations():
                 break
 
         # map next_step to dm_stage and build question list
-        if next_step == 'Initial Situation':
-            dm_stage = 0; questions = []
-        elif next_step and next_step.startswith('Inject'):
-            # only Inject 2 or 3
+        if next_step == "Initial Situation":
+            dm_stage, questions = 0, []
+        elif next_step and next_step.startswith("Inject"):
+            # Inject 2 → stage 2; Inject 3 → stage 4
             num = int(next_step.split()[1])
-            dm_stage = {2:3, 3:5}[num]
+            dm_stage = 2 if num == 2 else 4
             questions = []
         elif next_step:
-            # decision X
-            # find in which block
-            questions = core if norm(core[0]['inject']) != next_step else core
-            # simplified: always load the full core/branch/final block
-            # compute index
-            for seq, blk, stage in (
-                (core, core,2), (branch,branch,4), (final,final,6)
-            ):
-                if any(norm(q['inject'])==next_step for q in blk):
-                    questions = blk
-                    dm_stage = stage
-                    break
+            # Decision… find which block it belongs to
+            # core decisions → stage 1
+            if any(norm(q["inject"]) == next_step for q in core):
+                dm_stage, questions = 1, core
+            # branch decisions → stage 3
+            elif any(norm(q["inject"]) == next_step for q in branch):
+                dm_stage, questions = 3, branch
+            # final decisions → stage 5
+            else:
+                dm_stage, questions = 5, final
         else:
-            # all done
-            dm_stage = 7; questions = []
+            # everyone done
+            dm_stage, questions = 6, [] 
 
         # store state
         ss.all_questions = questions
         ss.current_decision_index = (
-            None if not next_step or next_step.startswith('Inject')
-            else next((i for i,q in enumerate(questions) if norm(q['inject'])==next_step), None)
+            None if not questions else
+            next(i for i,q in enumerate(questions) if norm(q["inject"]) == next_step)
         )
         ss.dm_stage = dm_stage
         ss._stage_locked = True
-
-        nav_to('dm_questionnaire')
+        nav_to("dm_questionnaire")
         return
 
 
