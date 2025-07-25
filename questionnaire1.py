@@ -3697,7 +3697,7 @@ tick();
 
 
 def _persist_answer(sim_id, part_id, decision, qdata, answer, penalty=0, elapsed_s=0):
-    st.info("▶️ _persist_answer called with", sim_id, part_id, decision["inject"])
+    st.write("▶️ _persist_answer called with", sim_id, part_id, decision["inject"])
     # compute scoring
     cat_payload = {
         "basic_life_support": 0,
