@@ -3271,7 +3271,7 @@ def page_running_simulations():
 
         ss.dm_stage = dm_stage
         ss._stage_locked = True
-        #nav_to("dm_questionnaire")
+        nav_to("dm_questionnaire")
         return
 
 
