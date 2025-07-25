@@ -1231,8 +1231,7 @@ def page_live_dashboard():
             nav_to("welcome")
         return
 
-    # 1) Sync snapshot FIRST (answers + participants)
-    sync_simulation(sim_id)          # respects ttl
+    # 1) Sync snapshot FIRST (answers + participants)          # respects ttl
     # build_answer_index() only if you actually use it for cross lookups here
     # answer_idx = build_answer_index()
 
