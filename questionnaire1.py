@@ -310,7 +310,7 @@ decisions1to15 = [
     },
 
     {"inject": "Decision 12 (10:41:00): ", 
-    "text": "The repressurization of the crew lock can take up to 15 min. Given the circumstances, how should the pressurisation of the crew lock be conducted?", "options": ["A. Partial pressurisation finishing at 12 psi (~10 min.)","B.Normal repressurization (~15 min.)","C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)"],
+    "text": "The repressurization of the crew lock can take up to 15 min. Given the circumstances, how should the pressurisation of the crew lock be conducted?", "options": ["A.Partial pressurisation finishing at 12 psi (~10 min.)","B.Normal repressurization (~15 min.)","C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)"],
     "scores":  [
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #A
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #B
@@ -583,10 +583,10 @@ decisions17to19_12C=[
 
 
 # ---------------------------------------------- 17 to 26 ------------------------------------
-#"A. Partial pressurisation finishing at 12 psi (~10 min.)","B.Normal repressurization (~15 min.)","C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min) pressurisation at a rate of 1.0 psi/second (~5 min) "
+#"A.Partial pressurisation finishing at 12 psi (~10 min.)","B.Normal repressurization (~15 min.)","C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min) pressurisation at a rate of 1.0 psi/second (~5 min) "
 decisions17to26={
     # Condition key: (answer from Decision 12, answer from Decision 15)
-    ("A. Partial pressurisation finishing at 12 psi (~10 min.)", "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):[ # without pneumothorax
+    ("A.Partial pressurisation finishing at 12 psi (~10 min.)", "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):[ # without pneumothorax
         
             {"inject": "Decision 17 (11:06:00): ", 
             "role_specific": {
@@ -860,7 +860,7 @@ decisions17to26={
 
 
     ],      
-    ("A. Partial pressurisation finishing at 12 psi (~10 min.)", "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock."): [ # with pneumothorax
+    ("A.Partial pressurisation finishing at 12 psi (~10 min.)", "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock."): [ # with pneumothorax
         
         {"inject": "Decision 17 (11:06:00): ", 
             "role_specific": {
@@ -1068,7 +1068,7 @@ decisions17to26={
             }
         },
     ],
-    ("A. Partial pressurisation finishing at 12 psi (~10 min.)", "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed."): [ # with pneumothorax
+    ("A.Partial pressurisation finishing at 12 psi (~10 min.)", "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed."): [ # with pneumothorax
         {"inject": "Decision 17 (11:06:00): ", 
             "role_specific": {
                 "Commander (CMO,IV2)": {"text": "Repressurization is now completed. Discuss with FE-2(IV1), which sequence of actions must be completed before the hatch can be safely opened?", "options": ["A. The repressurization was successful at 12 psi, so ignore the pressure difference and open the hatch immediately.","B. To open the door both sides need to be at the same pressure. This way, continue with the repressurization until the 14 psi.","C. The pressure sensors must be malfunctioning since 12 psi is sufficient—override the sensor data and open the hatch.","D. The hatch should be opened anyway while the system automatically adjusts for the pressure difference."],
@@ -1276,7 +1276,7 @@ decisions17to26={
         },
     ],
     
-    ("A. Partial pressurisation finishing at 12 psi (~10 min.)", "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals."): [ # with pneumothorax
+    ("A.Partial pressurisation finishing at 12 psi (~10 min.)", "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals."): [ # with pneumothorax
         {"inject": "Decision 17 (11:06:00): ", 
             "role_specific": {
                 "Commander (CMO,IV2)": {"text": "Repressurization is now completed. Discuss with FE-2(IV1), which sequence of actions must be completed before the hatch can be safely opened?", "options": ["A. The repressurization was successful at 12 psi, so ignore the pressure difference and open the hatch immediately.","B. To open the door both sides need to be at the same pressure. This way, continue with the repressurization until the 14 psi.","C. The pressure sensors must be malfunctioning since 12 psi is sufficient—override the sensor data and open the hatch.","D. The hatch should be opened anyway while the system automatically adjusts for the pressure difference."],
@@ -3110,11 +3110,10 @@ def _ensure_decision_index():
 
     for block in (
         decisions1to15,
-        decisions14to23,
-        decisions24to28,
-        decisions29to32,
-        decisions33to34,
-        decisions35to43,
+        decision16_12A,
+        decisions17to18_12B,
+        decisions17to19_12C,
+        decisions17to26,
     ):
         for d in _iter_block(block):
             di[d["inject"].strip().lower()] = d
@@ -3271,14 +3270,12 @@ def show_tlx_questionnaire():
 
         st.session_state.tlx_answers = responses
         st.success("✅ TLX submitted!")
-        st.session_state.dm_stage = 13
+        st.session_state.dm_stage = 9
         st.session_state._tlx_saving = False
         st.rerun()
     else:
         # Stop here so nothing else on the page overwrites the TLX view
         st.stop()
-
-
 
 
 def normalize_inject_prefix(raw: str) -> str:
@@ -3346,7 +3343,6 @@ def preload_participants(sim_id):
 
 
 # ---------- Indexing rows into cache ----------
-# ---------- Primary cached lookup ----------
 
 def get_role_decision_answer(inject_prefix: str, role: str, use_db_fallback: bool = True) -> str | None:
     """
@@ -3483,12 +3479,12 @@ INJECT3_TIME = {
 
 def display_inject2():
     st.subheader("📌 Inject 2")
-    a7  = get_role_decision_answer("Decision 12", "FD")
-    a13 = get_role_decision_answer("Decision 15", "FD")
-    if not a7 or not a13:
-        st.info("⏳ Waiting for FD to answer Decisions 7 & 13...")
+    a12  = get_role_decision_answer("Decision 12", "FD")
+    a15 = get_role_decision_answer("Decision 15", "FD")
+    if not a12 or not a15:
+        st.info("⏳ Waiting for FD to answer the key decision...")
         return
-    k = (classify_decision7(a7), classify_decision13(a13))
+    k = (classify_decision7(a12), classify_decision13(a15))
     txt = INJECT2_MAP.get(k)
     if txt:
         st.write(txt)
@@ -3502,55 +3498,6 @@ def show_initial_situation():
     st.subheader("🚀 Initial Situation")  
     st.write("For the 17th day of the mission, an EVA is planned to install a component on a radiation collection device. **EVA Crew:** EVA1 (Mission Specialist) & EVA2 (Flight Engineer) **Inside Crew:** Commander (CMO) & FE-3(IV1) (IV Crew Member).")
 
-def inject1():
-    st.subheader("📌 Inject 1")
-    st.write(
-        "2 hours into EVA (10:00:00): Suddenly EVA 1 reports numbness on the right arm while performing the task. "
-        "Note: The EVAs aren’t close; FE-3 cannot see them."
-    )
-    st.session_state.setdefault("inject1_clicked", False)
-    if st.session_state.inject1_clicked:
-        return
-    # if st.button("Next ➡", key="inject1_next"):
-    #     sim_id  = st.session_state.simulation_id
-    #     part_id = st.session_state.participant_id
-    #     payload = {
-    #         "id_simulation":  sim_id,
-    #         "id_participant": part_id,
-    #         "inject":         "Inject 1",
-    #         "question_text":  "",
-    #         "answer_text":    "DONE",
-    #         "basic_life_support": 0,
-    #         "primary_survey": 0,
-    #         "secondary_survey": 0,
-    #         "definitive_care": 0,
-    #         "crew_roles_communication": 0,
-    #         "systems_procedural_knowledge": 0,
-    #         "response_time": "00:00:00"
-    #     }
-    #     try:
-    #         supabase.from_("answers").upsert(
-    #             [payload],
-    #             on_conflict="id_simulation,id_participant,inject"
-    #         ).execute()
-    #     except Exception as e:
-    #         st.error(f"❌ Could not record Inject 1: {e}")
-    #         return
-    #     # cache
-    #     st.session_state.setdefault("answers_cache", []).append(payload)
-    #     _cache_answer_row(payload)
-    #     MAX_CACHE_ROWS = 3000
-    #     ac = st.session_state.answers_cache
-    #     if len(ac) > MAX_CACHE_ROWS:
-    #         # mantém só últimos N
-    #         st.session_state.answers_cache = ac[-MAX_CACHE_ROWS:]
-    #         # reconstruir índices
-    #         st.session_state.answers_by_participant.clear()
-    #         st.session_state.answers_by_prefix.clear()
-    #         for row in st.session_state.answers_cache:
-    #             _cache_answer_row(row)
-    #     st.session_state.inject1_clicked = True
-    #     st.rerun()
 
 def inject3():
     st.subheader(f"📌 Inject 3")
@@ -3560,10 +3507,6 @@ But the USSTRATCOM informs the MCC TOPO flight controller with a Conjunction Dat
 there’s a probability > 0.01% of collision. The CARA program changes the object’s label from yellow to red.
 Possible collision within 1 hour. PDAM (Predetermined Debris Avoidance Maneuver) isn’t possible.
 """)
-
-def inject4():
-    st.subheader("📌 Inject 4")
-    st.write("During the relocation and transport of the patient and medical equipment, the Commander accidentally bumps into a protruding sharp edge on the gateway wall. This results in a deep, longitudinally oriented laceration on the medial side of the anterior portion of the right thigh. The cut extends from the proximal (closer to the hip) to the distal (closer to the knee) part of the thigh.")
 
 
 def norm_prefix(label: str) -> str:
@@ -3575,7 +3518,7 @@ def norm_prefix(label: str) -> str:
         core = core.split("(")[0].strip()
     return core
 
-KEY_DECISIONS = {"Decision 12", "Decision 15", "Decision 23", "Decision 34"}
+KEY_DECISIONS = {"Decision 12", "Decision 15"}
 ALL_ROLES = ["FE-3 (EVA2)","Commander (CMO,IV2)","FE-1 (EVA1)","FE-2 (IV1)","FD","FS","BME","CAPCOM"]
 
 def get_fd_participant_id(sim_id: int) -> int | None:
@@ -3859,10 +3802,8 @@ def _render_inject(sim_id, part_id, inject_full, prefix):
     # Mapping to existing inject functions if desired
     special_map = {
         "Initial Situation": show_initial_situation,
-        "Inject 1": inject1,
         "Inject 2": display_inject2,
-        "Inject 3": inject3,
-        "Inject 4": inject4
+        "Inject 3": inject3
     }
     fn = special_map.get(prefix)
     if fn:
@@ -4175,14 +4116,10 @@ def handle_inject(inject_number: int):
     inject_label = "Inject " + str(inject_number)
 
     # mostrar texto específico
-    if inject_number == 1:
-        inject1()
-    elif inject_number == 2:
+    if inject_number == 2:
         display_inject2()
     elif inject_number == 3:
         inject3()
-    elif inject_number == 4:
-        inject4()
 
     # se este participante ainda não clicou
     prefix = inject_label
@@ -4203,27 +4140,36 @@ def handle_inject(inject_number: int):
     st.session_state.current_decision_index = 1
     st.rerun()
 
-def load_block_questions_for_stage(stage: int):
-    get = get_role_decision_answer  # já cache-aware se usares versão otimizada
-    if stage == 2:   # 1–13
-        return decisions1to15
-    if stage == 4:   # 14–23
-        k = (get("Decision 12","FD"), get("Decision 15","FD"))
-        return decisions14to23.get(k, [])
-    if stage == 6:   # 24–28
-        k = (get("Decision 12","FD"), get("Decision 15","FD"))
-        return decisions24to28.get(k, [])
-    if stage == 8:   # 29–32
-        k = (get("Decision 12","FD"), get("Decision 15","FD"))
-        return decisions29to32.get(k, [])
-    if stage == 9:   # 33–34
-        k = (get("Decision 12","FD"), get("Decision 15","FD"), get("Decision 23","FD"))
-        return decisions33to34.get(k, [])
-    if stage == 10:  # 35–43
-        k = (get("Decision 12","FD"), get("Decision 15","FD"),
-             get("Decision 23","FD"), get("Decision 34","FD"))
-        return decisions35to43.get(k, [])
+def load_block_questions_for_stage(stage):
+    """Return the list of question‐dicts to display for a given dm_stage."""
+    # Stage 1 → Decisions 1–15
+    if stage == 1:
+        return decisions1to15[:]                  # copy to avoid mutation
+
+    # Stage 2 → Inject 2 is handled by your inject‐renderer
+
+    # Stage 3 → branch on FD’s Decision 12
+    if stage == 3:
+        a12 = get_role_decision_answer("Decision 12", "FD")
+        if a12.startswith("A"):
+            return decision16_12A[:]               # 16_12A block
+        elif a12.startswith("B"):
+            return decisions17to18_12B[:]          # 17–18_12B block
+        elif a12.startswith("C"):
+            return decisions17to19_12C[:]          # 17–19_12C block
+        else:
+            return []
+
+    # Stage 4 → Inject 3 is shown via your inject3() path
+
+    # Stage 5 → Decisions 17–26, keyed by (Decision 12, Decision 15)
+    if stage == 5:
+        key = (get_role_decision_answer("Decision 12", "FD"), get_role_decision_answer("Decision 15", "FD"))
+        return decisions17to26.get(key, [])
+
+    # all other stages → nothing to load here
     return []
+
 
 def handle_decision_block():
     stage = st.session_state.dm_stage
@@ -4274,9 +4220,9 @@ def _derive_stage_if_needed():
 
     # heurística simples (ajusta às tuas regras):
     order = [
-        "Initial Situation","Inject 1","Decision 1","Decision 2","Decision 3",
-        "Decision 4","Decision 5","Decision 6","Decision 12","Decision 8","Decision 9",
-        "Decision 10","Decision 11","Decision 12","Decision 15","Inject 2",
+        "Initial Situation",
+        "Decision 1","Decision 2","Decision 3","Decision 4","Decision 5","Decision 6","Decision 7","Decision 8","Decision 9", "Decision 10","Decision 11","Decision 12","Decision 13","Decision 14","Decision 15",
+        "Inject 2",
         "Decision 14","Decision 15","Decision 16","Decision 17","Decision 18","Decision 19","Decision 20","Decision 21","Decision 22","Decision 23",
         "Inject 3",
         "Decision 24","Decision 25","Decision 26","Decision 27","Decision 28",
@@ -4287,16 +4233,12 @@ def _derive_stage_if_needed():
     ]
     # encontra último item presente
     next_stage_for_prefix = {
-        "Inject 1": 1,
+        "Initial Situation": 1,
         "Decision 1": 2,
         "Inject 2": 3,
-        "Decision 14": 4,
+        "Decision 16": 4,
         "Inject 3": 5,
-        "Decision 24": 6,
-        "Inject 4": 7,
-        "Decision 29": 8,
-        "Decision 33": 9,
-        "Decision 35": 10,
+        "Decision 17": 6,
     }
 
     # Find last answered index
@@ -4365,6 +4307,47 @@ def preload_answers(sim_id):
             _cache_answer_row(r)
     except Exception as e:
         st.warning(f"Preload answers failed: {e}")
+
+def handle_final_page():
+    """Stage 6: show post‑simulation question, record answer, then go to TLX."""
+    sim_id  = st.session_state.simulation_id
+    part_id = st.session_state.participant_id
+
+    st.header("🎉 Thank you for completing the simulation!")
+    st.write(
+        "Eva 1 was really having an ischemic stroke and the object would collide with "
+        "the station creating a very small hole. The atmospheric pressure loss would "
+        "happen very slowly and only be detected days later. With this in mind, do you "
+        "think they should return to earth knowing that the trip could take up to 3 days?"
+    )
+
+    # Give them a place to type their recommendation
+    recommendation = st.text_area("Your recommendation:", height=150)
+
+    # Submit button
+    if st.button("Submit and go to the NASA TLX survey"):
+        # insert into Supabase
+        try:
+            supabase.from_("answers").insert([{
+                "id_simulation":   sim_id,
+                "id_participant":  part_id,
+                "inject":          "Post‑Simulation Question",
+                "answer_text":     recommendation,
+                "response_seconds": _elapsed_seconds("stage6"),  # use your timer util or 0
+                "penalty":         0
+            }]).execute()
+        except Exception as e:
+            st.error(f"❌ Could not record your answer: {e}")
+            return
+
+        # advance to TLX
+        st.session_state.dm_stage = 7
+        st.rerun()
+
+    else:
+        # stop here until they click
+        st.stop()
+
 
 
 def initial_stage():
@@ -4436,25 +4419,46 @@ def run(supabase, simulation_name: str, role: str):
     if stage == 0:
         handle_initial_start()
         return
-    if stage in (1,3,5,7):
-        st.session_state.all_questions = []
-        handle_inject({1:1,3:2,5:3,7:4}[stage])
-        return
-    if stage in (2,4,6,8,9,10):
+    elif stage == 1:
         handle_decision_block()
         return
-    if stage == 11:
-        st.header("🎉 Thank you for completing the simulation!")
-        if st.button("➡ Go to TLX"):
-             st.session_state.dm_stage = 12
-             st.rerun()
+
+    # ── Stage 2: Inject 2
+    elif stage == 2:
+        # clear questions for an inject run
+        st.session_state.all_questions = []
+        handle_inject(2)
         return
-    if stage == 12:
-        show_tlx_questionnaire()
+
+    # ── Stage 3: follow‑up block based on FD’s Decision 12
+    elif stage == 3:
+        handle_decision_block()
         return
-    if stage == 13:
-        st.success("🎉 Simulation & TLX complete!")
+
+    # ── Stage 4: Inject 3
+    elif stage == 4:
+        st.session_state.all_questions = []
+        handle_inject(3)
         return
+
+    # ── Stage 5: Decisions 17–26
+    elif stage == 5:
+        handle_decision_block()
+        return
+
+    # ── Stage 7: Simulation done, go to TLX
+    elif stage == 6:
+        handle_final_page()
+        return
+
+    # ── Stage 8: NASA‑TLX questionnaire
+    elif stage == 7:
+         show_tlx_questionnaire()
+         return
+    # ── Stage 9: all done
+    elif stage == 8:
+         st.success("🎉 Simulation & TLX complete!")
+         return
 
 
 
@@ -4475,9 +4479,9 @@ def get_inject_text(inject_id: str) -> str:
         answer_13 = get_role_decision_answer("Decision 15", "FD")
         inject2_text = ""
         if answer_7 and answer_13:
-            if (answer_7 == "A. Partial pressurisation finishing at 12 psi (~10 min.)" and answer_13 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
+            if (answer_7 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and answer_13 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
                 return "(10:40:00): The repressurization has finished successfully at 12 psi. EVA 1 shows signs of confusion."
-            elif (answer_7 == "A. Partial pressurisation finishing at 12 psi (~10 min.)" and (answer_13 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_13 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_13 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
+            elif (answer_7 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and (answer_13 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_13 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_13 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
                 return "(10:40:00): EVA 1 showed confusion due to breathing issues, now presenting sharp chest pain and shortness of breath."
             elif (answer_7 == "B.Normal repressurization (~15 min.)" and answer_13 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
                 return "(10:45:00): EVA 1 shows confusion and difficulty understanding what’s happening."
@@ -4488,22 +4492,13 @@ def get_inject_text(inject_id: str) -> str:
             elif (answer_7 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and (answer_13 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_13 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_13 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
                 return"(10:35:00): EVA 1 shows chest pain and shortness of breath due to confusion."
     elif inject_id == "Inject 3":
-            answer_7  = get_role_decision_answer("Decision 12", "FD")
-            answer_13 = get_role_decision_answer("Decision 15", "FD")
-            a7, a13 = answer_7, answer_13
-            code7  = classify_decision7(a7)
-            code13 = classify_decision13(a13)
-            pneumo = (code13 == "OTHER")
-            scenario_time = INJECT3_TIME.get((code7, pneumo), "???")
-            return("""
+            return("""(11:05:00)
         Days before there was a manoeuvre of the Lunar Gateway to avoid a possible collision with an object.
         But the USSTRATCOM informs the MCC TOPO flight controller with a Conjunction Data Message
         (time of closest approach, probability of collision, and miss distance). The object changed trajectory,
         there’s a probability > 0.01% of collision. The CARA program changes the object’s label from yellow to red.
         Possible collision within 1 hour. PDAM (Predetermined Debris Avoidance Maneuver) isn’t possible.
         """)
-    elif inject_id == "Inject 4":
-        return ("During the relocation and transport of the patient and medical equipment, the Commander accidentally bumps into a protruding sharp edge on the gateway wall. This results in a deep, longitudinally oriented laceration on the medial side of the anterior portion of the right thigh. The cut extends from the proximal (closer to the hip) to the distal (closer to the knee) part of the thigh.")
     else:
         return "_No prompt defined for {inject_id}_"
 
@@ -4539,22 +4534,21 @@ def get_correct_answer(inject: str):
     return decision.get("correct","")
 
 
-
-
-
 def apply_vital_consequences(answer_text: dict):
-    answer_13 = get_role_decision_answer("Decision 15", "FD")
-    commander_16 = get_role_decision_answer("Decision 16", "Commander (CMO,IV2)")
+    FD_2 = get_role_decision_answer("Decision 2", "FD")
+    CAPCOM_5 = get_role_decision_answer("Decision 5", "CAPCOM")
+    FS_8 = get_role_decision_answer("Decision 8", "FS")
+    CAPCOM_9 = get_role_decision_answer("Decision 9", "CAPCOM")
+    FS_10 = get_role_decision_answer("Decision 10", "FS")
+    FE2_14 = get_role_decision_answer("Decision 14", "FE-2(IV1)")
+    FD_15 = get_role_decision_answer("Decision 15", "FD")
+    FD_12 = get_role_decision_answer("Decision 12", "FD")
+    FD_16 = get_role_decision_answer("Decision 16", "FD")
+    FS_19 = get_role_decision_answer("Decision 21", "FS")
+    FS_21 = get_role_decision_answer("Decision 21", "FS")
+    FS_23 = get_role_decision_answer("Decision 23", "FS")
+    commander_18 = get_role_decision_answer("Decision 18", "Commander (CMO,IV2)")
     commander_17 = get_role_decision_answer("Decision 17", "Commander (CMO,IV2)")
-    fs_17 = get_role_decision_answer("Decision 17", "FS")
-    fs_18 = get_role_decision_answer("Decision 18", "FS")
-    fs_19 = get_role_decision_answer("Decision 19", "FS")
-    fd_20 = get_role_decision_answer("Decision 20", "FD")
-    commander_20 = get_role_decision_answer("Decision 20", "Commander (CMO,IV2)")
-    fe2_20 = get_role_decision_answer("Decision 20", "FE-2 (IV1)")
-    commander_21 = get_role_decision_answer("Decision 21", "Commander (CMO,IV2)")
-    fd_23 = get_role_decision_answer("Decision 23", "FD")
-    fs_33 = get_role_decision_answer("Decision 33", "FS")
 
     effects = {}
 
@@ -4573,71 +4567,156 @@ def apply_vital_consequences(answer_text: dict):
 
 
     # 3. After Inject 2 if Decision 15 ≠ A → drop SpO2
+    if FD_2 is not None:
+        effects["FE-1(EV1)"]["hr"] = "92 bpm"
+        effects["FE-1(EV1)"]["rr"] = "20 rpm"
+    
+    if CAPCOM_5 is not None:
+        effects["FE-1(EV1)"]["hr"] = "95 bpm"
+        effects["FE-1(EV1)"]["rr"] = "22 rpm"
+        effects["FE-1(EV1)"]["bp"] = "127/77 mmHg"
+        effects["FE-1(EV1)"]["spo2"] = "98%"
+    
+    if FS_8 is not None:
+        effects["FE-1(EV1)"]["hr"] = "97 bpm"
+        effects["FE-1(EV1)"]["rr"] = "20 rpm"
+        effects["FE-1(EV1)"]["bp"] = "130/80 mmHg"
+        effects["FE-1(EV1)"]["spo2"] = "99%"
+    
+    if CAPCOM_9 is not None:
+        effects["FE-1(EV1)"]["hr"] = "95 bpm"
+        effects["FE-1(EV1)"]["rr"] = "19 rpm"
+        effects["FE-1(EV1)"]["bp"] = "131/82 mmHg"
+        effects["FE-1(EV1)"]["spo2"] = "97%"
+    
+    if FS_10 is not None:
+        effects["FE-1(EV1)"]["hr"] = "93 bpm"
+        effects["FE-1(EV1)"]["rr"] = "23 rpm"
+        effects["FE-1(EV1)"]["bp"] = "135/87 mmHg"
+        effects["FE-1(EV1)"]["spo2"] = "99%"
+    
+    if FE2_14 is not None:
+        effects["FE-1(EV1)"]["hr"] = "91 bpm"
+        effects["FE-1(EV1)"]["rr"] = "22 rpm"
+        effects["FE-1(EV1)"]["bp"] = "137/90 mmHg"
+        effects["FE-1(EV1)"]["spo2"] = "99%"
+    
 
-    if answer_13 is not None and answer_13 != "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration.":
+    if FD_15 is not None and FD_15 != "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration.":
         effects["FE-1(EV1)"]["spo2"] = "88%"
         effects["FE-1(EV1)"]["hr"] = "92 bpm"
+        if FD_12 is not None and FD_12 == "A. Partial pressurisation finishing at 12 psi (~10 min.)":
+            if FD_16 is not None:
+                effects["FE-1(EV1)"]["hr"] = "100 bpm"
+                effects["FE-1(EV1)"]["rr"] = "28 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "88%"
+            if commander_18 is not None:
+                effects["FE-1(EV1)"]["status"] = "offline"
+            if FS_19 is not None:
+                effects["FE-1(EV1)"] = {
+                    "status": "online", "bp": "134/82 mmHg", "spo2": "87%", "hr": "101 bpm",
+                    "rr": "30 rpm", "ecg": "Normal"
+                }
+                effects["FE-1(EV1)"]["temp"] = "98.3 °F or 36.8ºC"
+            if FS_21 is not None:
+                effects["FE-1(EV1)"]["hr"] = "95 bpm"
+                effects["FE-1(EV1)"]["rr"] = "35 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "86%"
+            if FS_23 is not None:
+                effects["FE-1(EV1)"]["spo2"] = "96%"
+                effects["FE-1(EV1)"]["hr"] = "91 bpm"
+                effects["FE-1(EV1)"]["rr"] = "22 rpm"
+                effects["FE-1(EV1)"]["bp"] = "130/80 mmHg"
 
-    # 4. Decision 16.a = A → EVA1 vitals stop
-    if commander_16 == "A.Doff the EVA1 suit":
-        effects["FE-1(EV1)"]["status"] = "offline"
+        if FD_12 is not None and FD_12 == "B.Normal repressurization (~15 min.)":
+            if commander_17 is not None:
+                effects["FE-1(EV1)"]["hr"] = "100 bpm"
+                effects["FE-1(EV1)"]["rr"] = "28 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "88%"
+            if commander_18 is not None:
+                effects["FE-1(EV1)"]["status"] = "offline"
+            if FS_19 is not None:
+                effects["FE-1(EV1)"] = {
+                    "status": "online", "bp": "134/82 mmHg", "spo2": "87%", "hr": "101 bpm",
+                    "rr": "30 rpm", "ecg": "Normal"
+                }
+                effects["FE-1(EV1)"]["temp"] = "98.3 °F or 36.8ºC"
+            if FS_21 is not None:
+                effects["FE-1(EV1)"]["hr"] = "95 bpm"
+                effects["FE-1(EV1)"]["rr"] = "35 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "86%"
+            if FS_23 is not None:
+                effects["FE-1(EV1)"]["spo2"] = "96%"
+                effects["FE-1(EV1)"]["hr"] = "91 bpm"
+                effects["FE-1(EV1)"]["rr"] = "22 rpm"
+                effects["FE-1(EV1)"]["bp"] = "130/80 mmHg"
+                effects["FE-1(EV1)"]["glucose"] = "135 mg/dL"
+                effects["FE-1(EV1)"]["electrolytes"] = "Na 132 mmol/L; K 4.2 mmol/L; Ca 8.5 mg/dL"
 
-    # 5. Decision 17.a = A → restore EVA1 vitals
+        if FD_12 is not None and FD_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)":
+            if commander_17 is not None:
+                effects["FE-1(EV1)"]["hr"] = "100 bpm"
+                effects["FE-1(EV1)"]["rr"] = "28 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "88%"
+            if commander_18 is not None:
+                effects["FE-1(EV1)"]["status"] = "offline"
+            if FS_19 is not None:
+                effects["FE-1(EV1)"] = {
+                    "status": "online", "bp": "134/82 mmHg", "spo2": "87%", "hr": "101 bpm",
+                    "rr": "30 rpm", "ecg": "Normal"
+                }
+                effects["FE-1(EV1)"]["temp"] = "98.3 °F or 36.8ºC"
+            if FS_21 is not None:
+                effects["FE-1(EV1)"]["hr"] = "95 bpm"
+                effects["FE-1(EV1)"]["rr"] = "35 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "86%"
+            if FS_23 is not None:
+                effects["FE-1(EV1)"]["spo2"] = "96%"
+                effects["FE-1(EV1)"]["hr"] = "91 bpm"
+                effects["FE-1(EV1)"]["rr"] = "22 rpm"
+                effects["FE-1(EV1)"]["bp"] = "130/80 mmHg"
+                effects["FE-1(EV1)"]["glucose"] = "135 mg/dL"
+                effects["FE-1(EV1)"]["electrolytes"] = "Na 132 mmol/L; K 4.2 mmol/L; Ca 8.5 mg/dL"
+                effects["FE-1(EV1)"]["nihss"] = "NIHSS = 11"
+                effects["FE-1(EV1)"]["diagnostic"] = "Ultrasound shows pneumothorax of <20% lung volume"
+    
 
-    if commander_17 == "A.Commander and FE-2 (IV1) restrain EVA 1 to the Crew Medical Restraint System (CMR) and take his vitals. Meanwhile FE-3(IV1) unsuits EVA2.":
-        effects["FE-1(EV1)"] = {
-            "status": "online", "bp": "120/72 mmHg", "spo2": "88%", "hr": "92 bpm",
-            "rr": "15 rpm", "ecg": "Normal"
-        }
+    if FD_15 is not None and FD_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration.":
+        effects["FE-1(EV1)"]["spo2"] = "98%"
+        effects["FE-1(EV1)"]["hr"] = "92 bpm"
+        if commander_17 is not None:
+                effects["FE-1(EV1)"]["hr"] = "90 bpm"
+                effects["FE-1(EV1)"]["rr"] = "20 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "99%"
+        if commander_18 is not None:
+                effects["FE-1(EV1)"]["status"] = "offline"
+        if FS_19 is not None:
+                effects["FE-1(EV1)"] = {
+                    "status": "online", "bp": "134/82 mmHg", "spo2": "100%", "hr": "93 bpm",
+                    "rr": "21 rpm", "ecg": "Normal"
+                }
+                effects["FE-1(EV1)"]["temp"] = "98.3 °F or 36.8ºC"
+        if FS_21 is not None:
+                effects["FE-1(EV1)"]["hr"] = "91 bpm"
+                effects["FE-1(EV1)"]["rr"] = "22 rpm"
+                effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
+                effects["FE-1(EV1)"]["spo2"] = "99%"
+        if FS_23 is not None:
+                effects["FE-1(EV1)"]["spo2"] = "98%"
+                effects["FE-1(EV1)"]["hr"] = "91 bpm"
+                effects["FE-1(EV1)"]["rr"] = "22 rpm"
+                effects["FE-1(EV1)"]["bp"] = "130/80 mmHg"
+                effects["FE-1(EV1)"]["glucose"] = "135 mg/dL"
+                effects["FE-1(EV1)"]["electrolytes"] = "Na 132 mmol/L; K 4.2 mmol/L; Ca 8.5 mg/dL"
+                effects["FE-1(EV1)"]["nihss"] = "NIHSS = 11"
 
-    # 6. Decision 17.b = B → hide CO2, show normal Temp
-    if fs_17 == "B.Conduct a comprehensive primary assessment, including vital signs, neurological evaluation, and peripheral circulation monitoring, while also checking for orthostatic or temperature regulation issues.":
-        effects["FE-1(EV1)"]["co2"] = None
-        effects["FE-1(EV1)"]["temp"] = "98.3 °F"
-
-    # 7. Decision 18
-    if answer_13 != "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration.":
-        if fs_18 == "A. Administer supplemental oxygen at 3 L/min via nasal cannula":
-            effects["FE-1(EV1)"]["spo2"] = "96%"
-    else:
-        if fs_18 == "A. Point‑of‑care blood glucose and serum electrolytes.":
-            effects["FE-1(EV1)"]["glucose"] = "145 mg/dL"
-            effects["FE-1(EV1)"]["electrolytes"] = "Na 132 mmol/L; K 4.2 mmol/L; Ca 8.5 mg/dL"
-
-    # 8. Decision 19 (13 = B/C/D) and answer A
-    if fs_19 == "A. Point‑of‑care blood glucose and serum electrolytes.":
-        effects["FE-1(EV1)"]["glucose"] = "135 mg/dL"
-        effects["FE-1(EV1)"]["electrolytes"] = "Na 132 mmol/L; K 4.2 mmol/L; Ca 8.5 mg/dL"
-
-    # 9. Decision 20.a and 20.c = A → show NIHSS
-    if fs_17 == "B.Conduct a comprehensive primary assessment, including vital signs, neurological evaluation, and peripheral circulation monitoring, while also checking for orthostatic or temperature regulation issues.":
-        if commander_20 == "A.Perform NIH Stroke Scale.":
-            effects["FE-1(EV1)"]["nihss"] = "NIHSS = 11"
-
-    # 10. Decision 20.b = A → EVA2 offline
-    if fe2_20 == "A.Doff the EVA 2 suit.":
-        effects["FE-2(EV2)"]["status"] = "offline"
-
-    # 11. Decision 21.c = A → show pneumothorax msg
-    if commander_21 == "A.FE-2 (IV1) goes grab the ultrasound equipment to help in the diagnosis.":
-        effects["FE-1(EV1)"]["diagnostic"] = "Ultrasound shows pneumothorax of <20% lung volume"
-
-    # 12. Decision 26 and 23
-    if fd_23 not in [
-    "A.Administer 325 mg aspirin orally, begin O₂ at 3 L/min via nasal cannula, and observe the pneumothorax with serial ultrasound.",
-    "A.Administer 325 mg aspirin orally."]:
-        effects["FE-1(EV1)"]["bp"] = "120/72 mmHg"
-    else:
-        effects["FE-1(EV1)"]["bp"] = "135/85 mmHg"  # levemente aumentada
-
-    # 13. Decision 33
-    if fd_23 not in [
-    "A.Administer 325 mg aspirin orally, begin O₂ at 3 L/min via nasal cannula, and observe the pneumothorax with serial ultrasound.",
-    "A.Administer 325 mg aspirin orally."]:
-        if fs_33 in ["A.Yes, administer 325 mg aspirin orally.", "A.Yes, administer 325 mg aspirin orally, begin O₂ at 3 L/min via nasal cannula, and observe the pneumothorax with serial ultrasound." ]:
-            effects["FE-1(EV1)"]["bp"] = "120/72 mmHg"
-        else:
-            effects["FE-1(EV1)"]["bp"] = "135/85 mmHg"
 
     # Salvar efeitos no estado
     st.session_state["vital_effects"] = effects
@@ -5200,8 +5279,8 @@ def apply_vital_consequences(answer_text: dict):
 #                 st.rerun()
 #             return
         
-#         a7, a13 = get_decision_answer("Decision 12"), get_decision_answer("Decision 15")
-#         st.session_state.all_questions = decisions24to28.get((a7, a13), [])
+#         a12, a15 = get_decision_answer("Decision 12"), get_decision_answer("Decision 15")
+#         st.session_state.all_questions = decisions24to28.get((a12, a15), [])
 #         st.session_state.current_decision_index = 1
 #         st.session_state.loaded_24to28 = True
 #         st.session_state.dm_stage = 6
@@ -5322,8 +5401,8 @@ def apply_vital_consequences(answer_text: dict):
 
 #         # 6) once everyone’s ready, load the follow-ups
 #         if st.button("Next ➡", key="stage7"):
-#             a7, a13 = get_decision_answer("Decision 12"), get_decision_answer("Decision 15")
-#             followups = decisions29to32.get((a7, a13), [])
+#             a12, a15 = get_decision_answer("Decision 12"), get_decision_answer("Decision 15")
+#             followups = decisions29to32.get((a12, a15), [])
 #             st.session_state.all_questions = followups
 #             st.session_state.current_decision_index = 1
 #             st.session_state.dm_stage = 8

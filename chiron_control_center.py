@@ -4,7 +4,7 @@ import data_simulation          # your wrapper now exposes run(simulation_name) 
 import questionnaire1           # sets st.session_state['dm_finished']=True
 import os, json
 import pandas as pd
-from questionnaire1 import  decisions1to13, decisions14to23, decisions24to28, decisions29to32, decisions33to34, decisions35to43
+from questionnaire1 import  decisions1to15, decisions14to23, decisions24to28, decisions29to32, decisions33to34, decisions35to43
 import base64
 from questionnaire1 import apply_vital_consequences
 import matplotlib.pyplot as plt
@@ -161,12 +161,11 @@ def count_answers_for_step(sim_id: str, step: str, answer_rows, key_decisions):
 inject_prompt_map = {}
 try:
     all_blocks = [
-        questionnaire1.decisions1to13,
-        *questionnaire1.decisions14to23.values(),
-        *questionnaire1.decisions24to28.values(),
-        *questionnaire1.decisions29to32.values(),
-        *questionnaire1.decisions33to34.values(),
-        *questionnaire1.decisions35to43.values(),
+        questionnaire1.decisions1to15,
+        *questionnaire1.decision16_12A.values(),
+        *questionnaire1.decisions17to18_12B.values(),
+        *questionnaire1.decisions17to19_12C.values(),
+        *questionnaire1.decisions17to26.values(),
     ]
     for block in all_blocks:
         for d in block:
@@ -310,20 +309,8 @@ def page_login():
                         "profile_type_code": code
                     })
                     .execute()
-                    )
-                # st.write("🔍 sup_res repr:", sup_res)
-                # try:
-                #     st.write("🔍 sup_res.__dict__:", sup_res.__dict__)
-                # except:
-                #     pass
-                # try:
-                #     st.write("🔍 dir(sup_res):", dir(sup_res))
-                # except:
-                #     pass
-                
+                    )                
 
-                # 5) Verify the insert really happened
-                # sup_res.data is a list of the inserted rows
                 if not getattr(sup_res, "data", None):
                     st.error("❌ Failed to create profile.")
                     return
@@ -512,7 +499,6 @@ def page_create_new_simulation():
                 st.success(f"✅ Created '{sim_name}' (id={created['id']})")
                 st.session_state.simulation_id   = created["id"]
                 st.session_state.simulation_name = sim_name
-                # reset caches for fresh sim context
                 st.session_state.answers_cache      = []
                 st.session_state.last_answer_id     = 0
                 st.session_state.participants_cache = []
@@ -625,7 +611,6 @@ def roles_claimed_supervisor():
             nav_to("menu_iniciar_simulação_supervisor")
     else:
         st.info(f"{len(parts)} joined; fill all roles to start.")
-
 
 
 def page_supervisor_menu():
@@ -807,9 +792,6 @@ def participant_new_simulation():
         new_participant = resp.data[0]
         st.session_state.participant_id = new_participant["id"]
 
-
-        # ────────────────────────────────────────────────────────────────
-
         nav_to("dm_role_claim")
 
 MAX_ROLES = 8
@@ -926,7 +908,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
     # —————————————————————
     # 1) On first entry, mark simulation + participant as started
     # —————————————————————
-    if st.session_state.dm_stage == 0 and not st.session_state.get("dm_started_marker", False):
+    if st.session_state.dm_stage == 1 and not st.session_state.get("dm_started_marker", False):
         # 1a) Update simulation
         try:
             now_iso = datetime.utcnow().isoformat() + "Z"
@@ -946,7 +928,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
   
     stage = st.session_state.dm_stage
     # only default to 1 on actual decision stages, not injects
-    if stage not in (1, 3, 5, 7) \
+    if stage not in (1, 3, 5) \
     and not isinstance(st.session_state.get("current_decision_index"), int):
         st.session_state.current_decision_index = 1
 
@@ -988,12 +970,11 @@ def page_dm_questionnaire(key_prefix: str = ""):
 #----------------------------------------------------Page 4 - Supervisor---------------------------------------------------------------
 # at the top of questionnaire1.py (or wherever render_participant_live lives)
 from questionnaire1 import (
-    decisions1to13,
-    decisions14to23,
-    decisions24to28,
-    decisions29to32,
-    decisions33to34,
-    decisions35to43,
+    decisions1to15,
+    decision16_12A,
+    decisions17to18_12B,
+    decisions17to19_12C,
+    decisions17to26,
 )
 
 def normalize_inject(label: str) -> str:
@@ -1056,21 +1037,18 @@ def render_participant_live(pid: int, sim_id: int):
     if fd_id:
         for a in answers_by_part.get(fd_id, []):
             pref = normalize_inject(a["inject"])
-            if pref in {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}:
+            if pref in {"Decision 12", "Decision 15", "Decision 23"}:
                 fd_answers[pref] = a.get("answer_text")
 
-    ans7  = fd_answers.get("Decision 7")
-    ans13 = fd_answers.get("Decision 13")
-    ans23 = fd_answers.get("Decision 23")
-    ans34 = fd_answers.get("Decision 34")
+    ans7  = fd_answers.get("Decision 12")
+    ans13 = fd_answers.get("Decision 15")
 
     # Resolve dynamic blocks
-    block1 = decisions1to13
-    block2 = decisions14to23.get((ans7, ans13), [])
-    block3 = decisions24to28.get((ans7, ans13), [])
-    block4 = decisions29to32.get((ans7, ans13), [])
-    block5 = decisions33to34.get((ans7, ans13, ans23), [])
-    block6 = decisions35to43.get((ans7, ans13, ans23, ans34), [])
+    block1 = decisions1to15
+    block_12A = decision16_12A
+    block_12B = decisions17to18_12B
+    block_12C = decisions17to19_12C
+    block5 = decisions17to26.get((ans7, ans13), [])
 
     # Canonical ordered step list (inject markers included)
     steps = []
@@ -1101,7 +1079,7 @@ def render_participant_live(pid: int, sim_id: int):
             if a.get("answer_text") and a["answer_text"] != "SKIP":
                 step_counts[pref] = step_counts.get(pref, 0) + 1
 
-    key_decisions = {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}
+    key_decisions = {"Decision 12", "Decision 15"}
 
     # Decide current step
     current = "Finished"
@@ -1311,21 +1289,18 @@ def page_override_interface():
         for a in answers:
             if a["id_participant"] == fd_id:
                 pref = normalize_inject(a["inject"])
-                if pref in {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}:
+                if pref in {"Decision 12", "Decision 15", "Decision 23", "Decision 34"}:
                     fd_answers[pref] = a.get("answer_text")
 
-    ans7  = fd_answers.get("Decision 7")
-    ans13 = fd_answers.get("Decision 13")
-    ans23 = fd_answers.get("Decision 23")
-    ans34 = fd_answers.get("Decision 34")
+    ans7  = fd_answers.get("Decision 12")
+    ans13 = fd_answers.get("Decision 15")
 
     # 4) Build active blocks (same logic used elsewhere)
-    block1 = decisions1to13
-    block2 = decisions14to23.get((ans7, ans13), [])
-    block3 = decisions24to28.get((ans7, ans13), [])
-    block4 = decisions29to32.get((ans7, ans13), [])
-    block5 = decisions33to34.get((ans7, ans13, ans23), [])
-    block6 = decisions35to43.get((ans7, ans13, ans23, ans34), [])
+    block1 = decisions1to15
+    block_12A = decision16_12A
+    block_12B = decisions17to18_12B
+    block_12C = decisions17to19_12C
+    block5 = decisions17to26.get((ans7, ans13), [])
 
     active_blocks = [block1, block2, block3, block4, block5, block6]
 
@@ -2103,7 +2078,7 @@ def page_team_results():
                 .eq("id_simulation", sim_id_)
                 .eq("id_participant", fd_pid)
                 .execute()).data or []
-        wanted = {"Decision 7","Decision 13","Decision 23","Decision 34"}
+        wanted = {"Decision 12","Decision 15","Decision 23","Decision 34"}
         out = {}
         for r in rows:
             pref = normalize(r["inject"])
@@ -2113,7 +2088,7 @@ def page_team_results():
 
     fd_map = fetch_fd_answers_map(sim_id, fd_id)
 
-    missing = [k for k in ["Decision 7","Decision 13","Decision 23","Decision 34"] if k not in fd_map]
+    missing = [k for k in ["Decision 12","Decision 15","Decision 23","Decision 34"] if k not in fd_map]
     if missing:
         st.error(f"Missing FD key decisions: {', '.join(missing)}")
         return
@@ -2125,8 +2100,8 @@ def page_team_results():
         return f"{letter}{number}"
 
     scenario_code = ",".join([
-        scenario_token("Decision 7",  fd_map["Decision 7"]),
-        scenario_token("Decision 13", fd_map["Decision 13"]),
+        scenario_token("Decision 12",  fd_map["Decision 12"]),
+        scenario_token("Decision 15", fd_map["Decision 15"]),
         scenario_token("Decision 23", fd_map["Decision 23"]),
         scenario_token("Decision 34", fd_map["Decision 34"]),
     ])
@@ -2585,7 +2560,7 @@ def page_individual_results():
         st.error("Flight Director not present in this simulation.")
         return
 
-    key_needed = {"Decision 7", "Decision 13", "Decision 23", "Decision 34"}
+    key_needed = {"Decision 12", "Decision 15"}
     fd_key_answers = {}
     for row in answers_cache:
         if row["id_simulation"] != sim_id or row["id_participant"] != fd_id:
@@ -2606,10 +2581,8 @@ def page_individual_results():
         return f"{letter}{number}"
 
     scenario_code = ",".join([
-        scenario_token("Decision 7",  fd_key_answers["Decision 7"]),
-        scenario_token("Decision 13", fd_key_answers["Decision 13"]),
-        scenario_token("Decision 23", fd_key_answers["Decision 23"]),
-        scenario_token("Decision 34", fd_key_answers["Decision 34"]),
+        scenario_token("Decision 12",  fd_key_answers["Decision 12"]),
+        scenario_token("Decision 15", fd_key_answers["Decision 15"]),
     ])
     st.caption(f"Scenario code: {scenario_code}")
 
@@ -3081,12 +3054,12 @@ def page_running_simulations():
 
                 # rebuild the question‐sequence for this scenario
                 from questionnaire1 import (
-                    decisions1to13, decisions14to23, decisions24to28,
+                    decisions1to15, decisions14to23, decisions24to28,
                     decisions29to32, decisions33to34, decisions35to43,
                     get_role_decision_answer
                 )
-                ans7  = get_role_decision_answer("Decision 7",  "FD")
-                ans13 = get_role_decision_answer("Decision 13", "FD")
+                ans7  = get_role_decision_answer("Decision 12",  "FD")
+                ans13 = get_role_decision_answer("Decision 15", "FD")
                 ans23 = get_role_decision_answer("Decision 23", "FD")
                 ans34 = get_role_decision_answer("Decision 34", "FD")
 
@@ -3098,7 +3071,7 @@ def page_running_simulations():
                 ans32 = get_role_decision_answer("Decision 32", st.session_state.dm_role)
 
                 # 3) Rebuild each block based on those conds
-                b1 = decisions1to13
+                b1 = decisions1to15
                 b2 = decisions14to23.get(cond1, [])
                 b3 = decisions24to28.get(cond1, [])
                 b4 = decisions29to32.get(cond1, [])
@@ -3170,7 +3143,7 @@ def page_running_simulations():
                 answered      = { normalize(r["inject"]) for r in rows }
 
                 # also mark off any FD‑only decision they did:
-                KEY = { normalize(d) for d in ["Decision 7","Decision 13","Decision 23","Decision 34"] }
+                KEY = { normalize(d) for d in ["Decision 12","Decision 15","Decision 23","Decision 34"] }
                 for fd_pref in KEY:
                     if get_role_decision_answer(fd_pref, "FD") is not None:
                         answered.add(fd_pref)
