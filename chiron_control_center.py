@@ -871,6 +871,10 @@ def page_dm_role_claim():
             # store the id and role so the next page has context
             st.session_state.participant_id = me["id"]
             st.session_state.dm_role        = me["participant_role"]
+            st.session_state.dm_stage             = 0
+            st.session_state._stage_locked        = False
+            st.session_state.current_decision_index = None
+            st.session_state.all_questions        = []
             nav_to("dm_questionnaire")
     else:
         st.info(f"Waiting until all {len(parts)} participants have roles…")
