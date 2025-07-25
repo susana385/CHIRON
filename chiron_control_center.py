@@ -3168,8 +3168,10 @@ def page_running_simulations():
         ss.all_questions = questions
         ss.current_decision_index = (
             None if not questions else
-            next(i for i,q in enumerate(questions) if norm(q["inject"]) == next_step)
+            # +1 so that run()’s `index - 1` lands on the right question
+            next(i for i, q in enumerate(questions) if norm(q["inject"]) == next_step) + 1
         )
+
         ss.dm_stage = dm_stage
         ss._stage_locked = True
         nav_to("dm_questionnaire")
