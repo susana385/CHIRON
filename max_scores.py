@@ -4,55 +4,37 @@ from itertools import product
 from supabase_client import supabase
 import questionnaire1
 from questionnaire1 import (
-    decisions1to13,
-    decisions14to23, decisions24to28,
-    decisions29to32, decisions33to34, decisions35to43,
+    decisions1to15,
+    decision16_12A,
+    decisions17to18_12B,
+    decisions17to19_12C,
+    decisions17to26,
 )
-#from dotenv import load_dotenv
-# import os
 
-# # point load_dotenv at your env-file
-# load_dotenv(dotenv_path="supabase.env")
+# 1) Pull out the FD key‐decision options from the core block
 
-# # now os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_KEY") will be set
-# url = os.getenv("SUPABASE_URL")
-# key = os.getenv("SUPABASE_KEY")
-
-#load_dotenv(dotenv_path="supabase.env")
-# import os
-# print("URL:", os.getenv("SUPABASE_URL"))
-# print("KEY:", os.getenv("SUPABASE_KEY"))
-
-
-
-# 1) Pull out the FD key‐decision options exactly as you already do:
 def options_for(prefix, blocks):
     for d in blocks:
         if d["inject"].startswith(prefix):
             return d.get("options", [])
     return []
 
-opt7   = options_for("Decision 7",  decisions1to13)
-opt13  = options_for("Decision 13", decisions1to13)
-all14  = [d for blk in decisions14to23.values() for d in blk]
-opt23  = options_for("Decision 23", all14)
-all33  = [d for blk in decisions33to34.values() for d in blk]
-opt34  = options_for("Decision 34", all33)
+opt12 = options_for("Decision 12", decisions1to15)
+opt15 = options_for("Decision 15", decisions1to15)
 
 # 2) Categories & roles
 CATS = [
     "Basic_Life_Support","Primary_Survey","Secondary_Survey",
     "Definitive_Care","Crew_Roles_Communication","Systems_Procedural_Knowledge"
 ]
-ROLES = ["FE-3 (EVA2)","Commander (CMO, IV2)","FE-1 (EVA1)",
-         "FE-2 (IV1)","FD","FS","BME","CAPCOM"]
+ROLES = [
+    "FE-3 (EVA2)","Commander (CMO, IV2)","FE-1 (EVA1)",
+    "FE-2 (IV1)","FD","FS","BME","CAPCOM"
+]
+
+# 3) Scoring logic remains unchanged
 
 def max_for_questions(questions):
-    """
-    Returns for each role→category a dict with:
-      'max_value': sum of best points,
-      'contributors': list of inject names that drove that sum
-    """
     out = {
       r: {c: {"max_value": 0.0, "contributors": []} for c in CATS}
       for r in ROLES
@@ -61,7 +43,6 @@ def max_for_questions(questions):
     for d in questions:
         inj = d["inject"]
         for r in ROLES:
-            # pick the right scores list, falling back if missing
             if "role_specific" in d and r in d["role_specific"]:
                 entry = d["role_specific"][r]
                 sco_list = entry.get("scores", d.get("scores", []))
@@ -71,47 +52,40 @@ def max_for_questions(questions):
                 multi    = d.get("multi", False)
 
             for cat in CATS:
-                # gather all the option‐scores for this category
                 vals = [s.get(cat, 0.0) for s in sco_list]
-
                 if multi:
-                    # sum the top 5 (or fewer) choices
                     top_n = sorted(vals, reverse=True)[:5]
                     best = sum(top_n)
                 else:
-                    # single‐choice question
                     best = max(vals, default=0.0)
 
                 if best > 0:
                     out[r][cat]["max_value"]  += best
                     out[r][cat]["contributors"].append(inj)
-
     return out
 
-
-# 3) Supabase client
-# url = os.environ["SUPABASE_URL"]
-# key = os.environ["SUPABASE_KEY"]
-#sb  = create_client(url, key)
+# 4) Build upsert data based on new flow
 
 to_upsert = []
 
 def prefix(ans: str) -> str:
     return ans.split(".")[0].strip().lower()
 
-for a7, a13, a23, a34 in product(opt7, opt13, opt23, opt34):
-    p7,  p13  = prefix(a7),  prefix(a13)
-    p23, p34 = prefix(a23), prefix(a34)
-    # build exactly “b7,c13,b23,b34”
-    code = f"{p7}7,{p13}13,{p23}23,{p34}34"
-    # assemble full question list
+# Iterate over all combinations of FD’s Decision 12 & Decision 15 options
+for a12, a15 in product(opt12, opt15):
+    p12, p15 = prefix(a12), prefix(a15)
+    code = f"{p12}12,{p15}15"
+
+    # Assemble scenario questions:
     qs = []
-    qs += decisions1to13
-    qs += decisions14to23.get((a7,a13), [])
-    qs += decisions24to28.get((a7,a13), [])
-    qs += decisions29to32.get((a7,a13), [])
-    qs += decisions33to34.get((a7,a13,a23), [])
-    qs += decisions35to43.get((a7,a13,a23,a34), [])
+    qs += decisions1to15
+    if a12.startswith("A"):
+        qs += decision16_12A[:]
+    elif a12.startswith("B"):
+        qs += decisions17to18_12B[:]
+    elif a12.startswith("C"):
+        qs += decisions17to19_12C[:]
+    qs += decisions17to26.get((a12, a15), [])
 
     maxima = max_for_questions(qs)
 
@@ -120,7 +94,7 @@ for a7, a13, a23, a34 in product(opt7, opt13, opt23, opt34):
             to_upsert.append({
                 "scenario_code": code,
                 "role":          role,
-                "category":         f"{cat}_total",
+                "category":      f"{cat}_total",
                 "max_value":     info["max_value"],
                 "contributors":  info["contributors"],
             })
@@ -133,6 +107,7 @@ for i in range(0, len(to_upsert), 200):
       .execute()
 
 print("✅ max_scores populated with contributors.")
+
 
 
 

@@ -4,7 +4,7 @@ import data_simulation          # your wrapper now exposes run(simulation_name) 
 import questionnaire1           # sets st.session_state['dm_finished']=True
 import os, json
 import pandas as pd
-from questionnaire1 import  decisions1to15, decisions14to23, decisions24to28, decisions29to32, decisions33to34, decisions35to43
+from questionnaire1 import  decisions1to15, decision16_12A, decisions17to18_12B, decisions17to19_12C, decisions17to26
 import base64
 from questionnaire1 import apply_vital_consequences
 import matplotlib.pyplot as plt
@@ -1013,100 +1013,91 @@ def render_participant_live(pid: int, sim_id: int):
     role = role_map.get(pid, "—")
     st.markdown(f"#### {role} — Participant #{pid}")
 
-    # (Optional) simulation status kept outside; if you still need it,
-    # ensure you cached `status` when you fetched the simulation.
+    # Simulation status check
     sim_status = st.session_state.get("simulation_status", "running")
     if sim_status != "running":
         st.write("⏳ Waiting for simulation to start…")
         return
 
-    # Gather all answers for this simulation
+    # Gather all answers by participant
     answers_by_part = build_answers_by_part(sim_id)
     my_answers = answers_by_part.get(pid, [])
-    # Build quick lookups
     my_answer_map = {normalize_inject(a["inject"]): a for a in my_answers}
 
-    # FD Key decisions from FD participant (found once)
-    fd_id = None
-    for p in st.session_state.participants_cache:
-        if p["participant_role"] == "FD":
-            fd_id = p["id"]
-            break
-
+    # Extract FD key decisions
+    fd_id = next((p["id"] for p in st.session_state.participants_cache if p["participant_role"] == "FD"), None)
     fd_answers = {}
     if fd_id:
         for a in answers_by_part.get(fd_id, []):
-            pref = normalize_inject(a["inject"])
-            if pref in {"Decision 12", "Decision 15", "Decision 23"}:
-                fd_answers[pref] = a.get("answer_text")
+            key = normalize_inject(a["inject"])
+            if key in {"Decision 12", "Decision 15"}:
+                fd_answers[key] = a.get("answer_text")
 
-    ans7  = fd_answers.get("Decision 12")
-    ans13 = fd_answers.get("Decision 15")
+    # 1) Core block: Decisions 1–15
+    core = decisions1to15[:]
 
-    # Resolve dynamic blocks
-    block1 = decisions1to15
-    block_12A = decision16_12A
-    block_12B = decisions17to18_12B
-    block_12C = decisions17to19_12C
-    block5 = decisions17to26.get((ans7, ans13), [])
+    # 2) Branch on FD Decision 12 after Inject 2
+    a12 = fd_answers.get("Decision 12", "")
+    if a12.startswith("A"):
+        branch = decision16_12A[:]
+    elif a12.startswith("B"):
+        branch = decisions17to18_12B[:]
+    elif a12.startswith("C"):
+        branch = decisions17to19_12C[:]
+    else:
+        branch = []
 
-    # Canonical ordered step list (inject markers included)
-    steps = []
-    steps.append("Inject 1")
-    steps.extend(d["inject"] for d in block1)
-    steps.append("Inject 2")
-    steps.extend(d["inject"] for d in block2)
-    steps.append("Inject 3")
-    steps.extend(d["inject"] for d in block3)
-    steps.append("Inject 4")
-    steps.extend(d["inject"] for d in block4)
-    steps.extend(d["inject"] for d in block5)
-    steps.extend(d["inject"] for d in block6)
+    # 3) Final block after Inject 3, keyed by (Decision 12, Decision 15)
+    a15 = fd_answers.get("Decision 15", "")
+    final = decisions17to26.get((a12, a15), [])
 
-    # Count logic using cache only
-    # Precompute per-step counts (all participants)
-    # We need answer rows of all participants in sim:
+    # 4) Assemble ordered steps
+    steps = ["Initial Situation"]
+    steps += [d["inject"] for d in core]
+    steps += ["Inject 2"]
+    steps += [d["inject"] for d in branch]
+    steps += ["Inject 3"]
+    steps += [d["inject"] for d in final]
+
+    # 5) Count completions
     sim_answers = [a for a in st.session_state.answers_cache if a["id_simulation"] == sim_id]
     step_counts = {}
     for a in sim_answers:
-        pref = normalize_inject(a["inject"])
-        # Determine “countable”
-        if pref.startswith("Inject"):
+        key = normalize_inject(a["inject"])
+        if key.startswith("Inject"):
             if a.get("answer_text") == "DONE":
-                step_counts[pref] = step_counts.get(pref, 0) + 1
+                step_counts[key] = step_counts.get(key, 0) + 1
         else:
-            # decision counts any answer not SKIP
             if a.get("answer_text") and a["answer_text"] != "SKIP":
-                step_counts[pref] = step_counts.get(pref, 0) + 1
+                step_counts[key] = step_counts.get(key, 0) + 1
 
-    key_decisions = {"Decision 12", "Decision 15"}
+    key_steps = {"Decision 12", "Decision 15"}
 
-    # Decide current step
+    # Determine current step
     current = "Finished"
     for s in steps:
-        pref = normalize_inject(s)
-        needed = 1 if pref in key_decisions else 8
-        if step_counts.get(pref, 0) < needed:
-            current = pref
+        key = normalize_inject(s)
+        needed = 1 if key in key_steps else 8
+        if step_counts.get(key, 0) < needed:
+            current = key
             break
 
     st.markdown(f"**Current stage:** {current}")
 
+    # Display logic based on current
     if current == "Initial Situation":
-        # If you have a special initial situation text function
-        txt = questionnaire1.initial_situation_text if hasattr(questionnaire1, "initial_situation_text") else "Initial Situation"
+        txt = getattr(questionnaire1, "initial_situation_text", "Initial Situation")
         st.write(txt)
         return
     if current == "Finished":
         st.success("✅ All steps completed.")
         return
 
-    # Lookup a step's question definition
-    def lookup(pref: str):
-        for blk in (block1, block2, block3, block4, block5, block6):
-            for d in blk:
-                if normalize_inject(d["inject"]) == pref:
-                    # Resolve role-specific override
+    # Helper: lookup question by inject across core, branch, final
+    def lookup(inj):
+        for block in (core, branch, final):
+            for d in block:
+                if normalize_inject(d["inject"]) == inj:
                     txt = d.get("text", "")
                     opts = d.get("options", [])
                     rs = d.get("role_specific", {})
@@ -1114,51 +1105,52 @@ def render_participant_live(pid: int, sim_id: int):
                         txt = rs[role].get("text", txt)
                         opts = rs[role].get("options", opts)
                     return d["inject"], txt, opts
-        return pref, "_Prompt not found_", []
+        return inj, "_Prompt not found_", []
 
-    # Render logic
-    if current in key_decisions:
-        inject_label, prompt, opts = lookup(current)
-        st.markdown(f"### {inject_label}")
-        if role == "FD":
-            st.info("FD decision panel (read-only here). Use questionnaire view to answer.")
-        fd_ans = fd_answers.get(current)
-        if fd_ans:
-            st.success(f"FD answered: **{fd_ans}**")
+    # Render FD key decisions read‑only
+    if current in key_steps:
+        inj, txt, opts = lookup(current)
+        st.markdown(f"### {inj}")
+        st.info("FD decision (read-only). Use questionnaire view to answer.")
+        ans = fd_answers.get(current)
+        if ans:
+            st.success(f"FD answered: **{ans}**")
         else:
             st.warning("FD has not answered yet.")
         return
 
+    # Render inject completion status
     if current.startswith("Inject"):
         st.markdown(f"### {current}")
-        my_row = my_answer_map.get(current)
-        my_done = (my_row and my_row.get("answer_text") == "DONE")
+        row = my_answer_map.get(current)
+        done = row and row.get("answer_text") == "DONE"
         cnt = step_counts.get(current, 0)
-        if my_done:
+        if done:
             st.info(f"You marked DONE. Waiting others… ({cnt}/8)")
         else:
-            st.warning("The participant hasn't clicked next yet.")
+            st.warning("You haven't clicked next yet.")
         return
 
-    # Regular decision
-    inject_label, prompt, opts = lookup(current)
-    st.markdown(f"### {inject_label}")
-    st.write(prompt)
+    # Regular decision prompt
+    inj, txt, opts = lookup(current)
+    st.markdown(f"### {inj}")
+    st.write(txt)
     if opts:
         st.markdown("**Options:**")
         for o in opts:
             st.write(f"- {o}")
 
-    my_dec = my_answer_map.get(current)
+    my_row = my_answer_map.get(current)
     cnt = step_counts.get(current, 0)
-    if my_dec:
-        st.success(f"Your answer: **{my_dec.get('answer_text','')}**")
+    if my_row:
+        st.success(f"Your answer: **{my_row.get('answer_text','')}**")
         if cnt < 8:
             st.info(f"Waiting for others… ({cnt}/8)")
         else:
             st.info("All participants answered. Advancing…")
     else:
         st.warning("This decision hasn't been made yet.")
+
 
 
 def compute_step_counts(sim_id, answers):
@@ -1292,17 +1284,25 @@ def page_override_interface():
                 if pref in {"Decision 12", "Decision 15", "Decision 23", "Decision 34"}:
                     fd_answers[pref] = a.get("answer_text")
 
-    ans7  = fd_answers.get("Decision 12")
-    ans13 = fd_answers.get("Decision 15")
+    ans12  = fd_answers.get("Decision 12")
+    ans15 = fd_answers.get("Decision 15")
 
-    # 4) Build active blocks (same logic used elsewhere)
+    # Resolve dynamic blocks
     block1 = decisions1to15
-    block_12A = decision16_12A
-    block_12B = decisions17to18_12B
-    block_12C = decisions17to19_12C
-    block5 = decisions17to26.get((ans7, ans13), [])
 
-    active_blocks = [block1, block2, block3, block4, block5, block6]
+    # dynamically pick block2 depending on what FD answered at Decision 12:
+    ans12 = fd_answers.get("Decision 12")
+    block2 = decision16_12A.get(ans12, [])
+
+    # then after inject 2 you go straight to the B or C branch:
+    block3 = decisions17to18_12B.get(ans12, [])    if ans12 == "B" else []
+    block4 = decisions17to19_12C.get(ans12, [])    if ans12 == "C" else []
+
+    # after inject 3, look up the final “slot” by (ans12, ans15)
+    ans15 = fd_answers.get("Decision 15")
+    block5 = decisions17to26.get((ans12, ans15), [])
+
+    active_blocks = [block1, block2, block3, block4, block5]
 
     # 5) Collect override-able injects (decisions only, optionally inject markers)
     # If you also want to override inject markers (Inject 1–4), include them manually.
@@ -2941,381 +2941,173 @@ def page_running_simulations():
             st.info("Still loading… please wait a moment.")
             return
     sims = resp.data or []
-    sims = [s for s in sims if s.get("status") == "running"]
-    sims = sorted(
-        sims,
+    # filter only running sims, newest first
+    running = sorted(
+        (s for s in sims if s.get("status") == "running"),
         key=lambda s: s.get("started_at") or "",
         reverse=True
     )
 
-    if not sims:
+    if not running:
         st.info("No simulations currently running.")
         return
 
-    # 2) Render header row
-    header_cols = st.columns([1, 3, 3, 2])
-    header_style = (
-        "background-color:#004080;"
-        "color:white;"
-        "padding:8px;"
-        "border:1px solid #ddd;"
-        "text-align:center;"
+    # table header
+    cols = st.columns([1,3,3,2])
+    style_h = (
+        "background-color:#004080;color:white;padding:8px;"
+        "border:1px solid #ddd;text-align:center;"
     )
-    header_cols[0].markdown(
-        f"<div style='{header_style}'><strong>Join</strong></div>",
-        unsafe_allow_html=True
-    )
-    header_cols[1].markdown(
-        f"<div style='{header_style}'><strong>Name</strong></div>",
-        unsafe_allow_html=True
-    )
-    header_cols[2].markdown(
-        f"<div style='{header_style}'><strong>Started At</strong></div>",
-        unsafe_allow_html=True
-    )
-    header_cols[3].markdown(
-        f"<div style='{header_style}'><strong>Roles Logged</strong></div>",
-        unsafe_allow_html=True
-    )
+    headers = ["Join", "Name", "Started At", "Roles Logged"]
+    for c, h in zip(cols, headers):
+        c.markdown(f"<div style='{style_h}'><strong>{h}</strong></div>", unsafe_allow_html=True)
 
-    # 3) Render each simulation as a styled “row”
-    cell_base = "padding:8px;border:1px solid #ddd;"
-    first_col_style = "background-color:#e6f7ff;" + cell_base + "text-align:center;"
-    other_col_style = cell_base
-
-    for sim in sims:
-        c0, c1, c2, c3 = st.columns([1, 3, 3, 2])
-
-        # ── Join button in a shaded cell ──
+    # iterate sims
+    for sim in running:
+        c0, c1, c2, c3 = st.columns([1,3,3,2])
+        # join button
         with c0:
-            st.markdown(f"<div style='{first_col_style}'>", unsafe_allow_html=True)
-            join_clicked = st.button("▶️ Join", key=f"join_{sim['id']}")
+            st.markdown(f"<div style='background-color:#e6f7ff;padding:8px;"
+                        "border:1px solid #ddd;text-align:center;'>", unsafe_allow_html=True)
+            join = st.button("▶️ Join", key=f"join_{sim['id']}")
             st.markdown("</div>", unsafe_allow_html=True)
+        c1.markdown(f"<div style='padding:8px;border:1px solid #ddd;'>{sim['name']}</div>", unsafe_allow_html=True)
 
-        # ── Name, Started At, Roles Logged ──
-        c1.markdown(
-            f"<div style='{other_col_style}'>{sim['name']}</div>",
-            unsafe_allow_html=True
-        )
-        raw = sim.get("started_at")
-        ts  = pd.to_datetime(raw)
+        ts = pd.to_datetime(sim.get("started_at"))
+        started = ts.strftime("%Y-%m-%d %H:%M:%S") if pd.notna(ts) else "—"
+        c2.markdown(f"<div style='padding:8px;border:1px solid #ddd;'>{started}</div>", unsafe_allow_html=True)
+        c3.markdown(f"<div style='padding:8px;border:1px solid #ddd;'>{sim.get('roles_logged','—')}</div>", unsafe_allow_html=True)
 
-        if pd.notna(ts):
-            started = ts.strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            started = "—"
+        if not join:
+            continue
 
-        c2.markdown(
-            f"<div style='{other_col_style}'>{started}</div>",
-            unsafe_allow_html=True
-        )
-        c3.markdown(
-            f"<div style='{other_col_style}'>{sim.get('roles_logged','—')}</div>",
-            unsafe_allow_html=True
-        )
+        # set session state defaults
+        ss = st.session_state
+        ss.simulation_id = sim['id']
+        ss.simulation_name = sim['name']
+        ss.setdefault('answers_cache', [])
+        ss.setdefault('answers_delta', [])
+        ss.setdefault('participants_cache', {})
+        ss.setdefault('last_answer_id', 0)
+        ss.setdefault('last_snapshot_ts', 0.0)
 
-        # ── Handle the join click ──
-        if join_clicked:
-            # set the chosen simulation in session state
-            st.session_state.simulation_id   = sim["id"]
-            st.session_state.simulation_name = sim["name"]
-            role = st.session_state.user_role
-            ss = st.session_state
-            ss.setdefault("answers_cache", [])          # deve ser lista se usas .extend
-            ss.setdefault("answers_delta", [])          # lista de novos
-            ss.setdefault("participants_cache", {})     # dict id_participant -> info
-            ss.setdefault("last_answer_id", 0)
-            ss.setdefault("last_snapshot_ts", 0.0)
-
-            if role in ("supervisor", "administrator"):
-                nav_to("menu_iniciar_simulação_supervisor")
-                return
-
-
-            if role == "participant":
-                # find this user’s participant record
-                part_res = (
-                    supabase
-                    .from_("participant")
-                    .select("id, participant_role")
-                    .eq("id_profile", st.session_state.user.id)
-                    .eq("id_simulation", sim["id"])
-                    .maybe_single()
-                    .execute()
-                )
-                part = getattr(part_res, "data", None)
-                if not part:
-                    st.error("You have not joined this simulation.")
-                    return
-
-                # set participant state
-                st.session_state.participant_id = part["id"]
-                st.session_state.dm_role        = part["participant_role"]
-
-                # rebuild the question‐sequence for this scenario
-                from questionnaire1 import (
-                    decisions1to15, decisions14to23, decisions24to28,
-                    decisions29to32, decisions33to34, decisions35to43,
-                    get_role_decision_answer
-                )
-                ans7  = get_role_decision_answer("Decision 12",  "FD")
-                ans13 = get_role_decision_answer("Decision 15", "FD")
-                ans23 = get_role_decision_answer("Decision 23", "FD")
-                ans34 = get_role_decision_answer("Decision 34", "FD")
-
-                # 2) Build the three “conds” you care about
-                cond1 = (ans7,  ans13)             # have we done 7 & 13 yet?
-                cond2 = (ans7,  ans13, ans23)      # have we done 7,13 & 23 yet?
-                cond3 = (ans7,  ans13, ans23, ans34)  # have we done all four?
-                ans28 = get_role_decision_answer("Decision 28", st.session_state.dm_role)
-                ans32 = get_role_decision_answer("Decision 32", st.session_state.dm_role)
-
-                # 3) Rebuild each block based on those conds
-                b1 = decisions1to15
-                b2 = decisions14to23.get(cond1, [])
-                b3 = decisions24to28.get(cond1, [])
-                b4 = decisions29to32.get(cond1, [])
-                b5 = decisions33to34.get(cond2, [])
-                b6 = decisions35to43.get(cond3, [])
-
-                next_step = None
-                current_decision_index = None
-                q = None
-
-
-                if not all(cond1):
-                    flat_questions = b1
-                    inject_marker  = "Initial Situation" if not any(cond1) else "Inject 1"
-
-                elif cond1 and not cond2[2]:
-                    flat_questions = b2
-                    inject_marker  = "Inject 2"
-
-                elif cond2 and not ans28:
-                    flat_questions = b3
-                    inject_marker  = "Inject 3"
-
-                elif ans28 and not ans34:
-                    flat_questions = b4
-                    inject_marker  = "Inject 4"
-
-                elif ans32 and not ans34:
-                    flat_questions = b5
-                    inject_marker  = flat_questions[0]["inject"] if flat_questions else None
-
-                elif cond3:
-                    flat_questions = b6
-                    inject_marker  = flat_questions[0]["inject"] if flat_questions else None
-                    st.session_state.loaded_35to43 = True
-
-                else:
-                    inject_marker  = None
-
-                
-                #all_steps = [f"Inject {dm_stage//2}"] + [q["inject"] for q in flat_questions]
-                if inject_marker:
-                    all_steps = [inject_marker] + [q["inject"] for q in flat_questions]
-                else:
-                    all_steps = [q["inject"] for q in flat_questions]
-
-
-
-                # 3) get the very last answered inject from your answers table
-                ans_resp = (
-                    supabase
-                    .from_("answers")
-                    .select("inject")
-                    .eq("id_simulation",  sim["id"])
-                    .eq("id_participant", part["id"])
-                    .execute()
-                )
-                # helper to normalize any step-label into just its “prefix” (Decision X or Inject Y)
-                import re
-
-                def normalize(key: str) -> str:
-                    key = key.strip()
-                    m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', key)
-                    return m.group(1) if m else key
-                
-                # build a set of the step-prefixes they’ve already seen
-                rows = getattr(ans_resp, "data", []) or []
-                answered_raw = [r["inject"] for r in rows]
-                answered      = { normalize(r["inject"]) for r in rows }
-
-                # also mark off any FD‑only decision they did:
-                KEY = { normalize(d) for d in ["Decision 12","Decision 15","Decision 23","Decision 34"] }
-                for fd_pref in KEY:
-                    if get_role_decision_answer(fd_pref, "FD") is not None:
-                        answered.add(fd_pref)
-
-                if st.session_state.dm_role != "FD":
-                    answered |= KEY
-
-
-                # after flat_questions…
-                scenario_prefixes = {
-                    normalize(d["inject"])
-                    for d in flat_questions
-                }
-
-                inspect = []                
-                next_step = None
-                for step in all_steps:
-                    if normalize(step) not in answered:
-                        next_step = normalize(step)
-                        inspect.append({
-                        "step": step,
-                        "pref": next_step,
-                        "answered?": next_step in answered,
-                        "in scenario?": (not next_step.startswith("Decision")) or (next_step in scenario_prefixes)
-                    })
-                        break
-
-                st.write("DEBUG step inspection:", inspect)
-
-                # helper (put near other DB helpers or inline-cache it)
-                def _tlx_submitted(sim_id, part_id):
-                    try:
-                        r = (supabase
-                            .from_("taskload_responses")
-                            .select("id_simulation")
-                            .eq("id_simulation", sim_id)
-                            .eq("id_participant", part_id)
-                            .maybe_single()
-                            .execute())
-                        return bool(getattr(r, "data", None))
-                    except Exception:
-                        return False
-
-
-                # special-case the Initial Situation inject
-                if next_step == "Initial Situation":
-                    dm_stage = 0
-                    current_decision_index = None
-                    flat_questions = []
-                elif next_step is None:
-                    if _tlx_submitted(sim["id"], part["id"]):
-                        dm_stage = 13                      # “all done”
-                    else:
-                        dm_stage = 12                      # go to TLX
-                        st.session_state.all_questions = []          # no questions at an inject
-                        st.session_state.current_decision_index = None
-                        st.session_state.dm_stage = dm_stage
-                        st.session_state._stage_locked = True
-                    # lock & stash
-                    st.session_state.all_questions = []
-                    st.session_state.current_decision_index = None
-                    st.session_state.dm_stage = dm_stage
-                    st.session_state._stage_locked = True
-                elif next_step.startswith("Inject"):
-                    inj_no = int(next_step.split()[1])          # "Inject 3" -> 3
-                    dm_stage = {1:1, 2:3, 3:5, 4:7}[inj_no]      # your own mapping
-                    st.session_state.all_questions = []          # no questions at an inject
-                    st.session_state.current_decision_index = None
-                    st.session_state.dm_stage = dm_stage
-                    st.session_state._stage_locked = True 
-
-                else:
-                    # it really is a Decision X
-                    # find it in flat_questions…
-                    for rel_idx, q in enumerate(flat_questions):
-                        if normalize(q["inject"]) == next_step:
-                            rel = rel_idx + 1
-                            break
-                    else:
-                        st.error(f"⚠️ Couldn't locate {next_step!r} in flat_questions")
-                        return
-
-                    # decide your stage + index
-                    if flat_questions == b1:
-                        dm_stage, current_decision_index = 2, rel_idx + 1
-                    elif flat_questions == b2:
-                        dm_stage, current_decision_index = 4, rel_idx + 1
-                    elif flat_questions ==  b3:
-                        dm_stage, current_decision_index = 6, rel_idx + 1
-                    elif flat_questions ==  b4:
-                        dm_stage, current_decision_index = 8, rel_idx + 1
-                    elif flat_questions == b5:
-                        dm_stage, current_decision_index = 9, rel_idx + 1
-                    elif flat_questions == b6:
-                        dm_stage, current_decision_index = 10, rel_idx + 1
-                        st.session_state.loaded_35to43 = True
-                    else:
-                        dm_stage, current_decision_index = 12, rel_idx + 1
-
-        
-                # (plus mark off FD‐only decisions the same way you already do…)
-                
-                st.write("ALL_STEPS:", all_steps)
-                st.write("ANSWERED:", answered)
-                st.write("next_step:", next_step)
-
-
-
-                # 6) stash and navigate
-                # sanity check:
-                # sanity check
-                # after computing next_step, dm_stage, current_decision_index, flat_questions
-                is_inject = next_step and next_step.startswith("Inject")
-
-                if not is_inject:
-                    if not flat_questions or not isinstance(flat_questions[0], dict):
-                        st.error("⚠️ `all_questions` must be a list of dicts but isn’t – please check your decision blocks.")
-                        return
-                else:
-                    flat_questions = []                # make sure it’s empty for injects
-                    current_decision_index = None
-
-                
-                # st.write("DEBUG chosen next_step:", next_step)
-                # st.write("DEBUG dm_stage, current_decision_index:", dm_stage, current_decision_index)
-                # st.write("DEBUG all_steps:", all_steps)
-                # st.write("DEBUG answered prefixes:", answered)
-                # st.write("DEBUG cond (FD key decisions):", cond)
-                # st.write("DEBUG raw answers payload:", ans_resp.data)
-                # st.write("DEBUG raw_ans list of inject labels:", raw_ans)
-                # st.write("DEBUG normalized answered prefixes:", answered)
-                # st.write("DEBUG scenario_prefixes (allowed decision labels):", scenario_prefixes)
-
-                # st.write("DEBUG stage", dm_stage)
-                # st.write("DEBUG current_decision_index", current_decision_index)
-                #st.write("DEBUG flat_questions", flat_questions)
-                # st.write ("DEBUG b2",b2)
-
-
-                st.session_state.all_questions          = flat_questions
-                st.session_state.current_decision_index = current_decision_index
-                st.session_state.dm_stage               = dm_stage
-                st.session_state._stage_locked = True    # prevent auto-derivation from overwriting
-
-                # st.write("🔍 debugging all_questions:", st.session_state.all_questions[:5])
-                # idx = st.session_state.current_decision_index
-                # st.write("🔍 debug current_decision_index:", idx)
-                # if idx is not None:
-                #      q = st.session_state.all_questions[idx]
-                #      st.write("🔍 debug question:", q["inject"])
-                # else:
-                #     st.write("🔍 currently at an inject, no question index to show")
-                
-                ans12 = get_role_decision_answer("Decision 12", st.session_state.dm_role)
-                ans22 = get_role_decision_answer("Decision 22", st.session_state.dm_role)
-
-                if (st.session_state.dm_role != "FD" and ans12 is not None and ans13 is None) or (st.session_state.dm_role != "FD" and ans22 is not None and ans23 is None):
-                    st.warning("⏳ Wait for FD to answer the key decision to try to join again")
-                    return
-                
-                st.write("DEBUG → dm_stage:", dm_stage,
-                    "current_decision_index:", current_decision_index,
-                    "next_step:", next_step,
-                    "is_inject:", next_step.startswith("Inject") if next_step else None)
-
-
-                nav_to("dm_questionnaire")
-                return
-
-            st.error("Only supervisors or participants can join a running simulation.")
+        role = ss.user_role
+        if role in ('supervisor','administrator'):
+            nav_to('menu_iniciar_simulação_supervisor')
             return
 
+        if role != 'participant':
+            st.error('Only supervisors or participants can join a running simulation.')
+            return
+
+        # fetch participant record
+        part_res = (supabase.from_('participant')
+                    .select('id, participant_role')
+                    .eq('id_profile', ss.user.id)
+                    .eq('id_simulation', sim['id'])
+                    .maybe_single().execute())
+        part = getattr(part_res, 'data', None)
+        if not part:
+            st.error('You have not joined this simulation.')
+            return
+
+        ss.participant_id = part['id']
+        ss.dm_role = part['participant_role']
+
+        # build question flow based on new simulation structure
+        from questionnaire1 import (
+            decisions1to15, decision16_12A,
+            decisions17to18_12B, decisions17to19_12C,
+            decisions17to26, get_role_decision_answer
+        )
+        # key FD answers
+        a12 = get_role_decision_answer('Decision 12','FD') or ''
+        a15 = get_role_decision_answer('Decision 15','FD') or ''
+
+        # define blocks
+        core = decisions1to15[:]
+        if a12.startswith('A'):
+            branch = decision16_12A[:]
+        elif a12.startswith('B'):
+            branch = decisions17to18_12B[:]
+        elif a12.startswith('C'):
+            branch = decisions17to19_12C[:]
+        else:
+            branch = []
+        final = decisions17to26.get((a12,a15), [])
+
+        # assemble all_steps
+        all_steps = ['Initial Situation']
+        all_steps += [q['inject'] for q in core]
+        all_steps += ['Inject 2']
+        all_steps += [q['inject'] for q in branch]
+        all_steps += ['Inject 3']
+        all_steps += [q['inject'] for q in final]
+
+        # fetch answered injects for this participant
+        ans_resp = (supabase.from_('answers')
+                    .select('inject')
+                    .eq('id_simulation', sim['id'])
+                    .eq('id_participant', part['id'])
+                    .execute())
+        raw = getattr(ans_resp, 'data', []) or []
+
+        # normalize helper
+        import re
+        def norm(x):
+            m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', x.strip())
+            return m.group(1) if m else x.strip()
+
+        seen = {norm(r['inject']) for r in raw}
+        # include FD-only decisions as answered
+        for fd in ('Decision 12','Decision 15'):
+            if get_role_decision_answer(fd,'FD') is not None:
+                seen.add(fd)
+        if ss.dm_role != 'FD': seen |= {'Decision 12','Decision 15'}
+
+        # find next_step
+        next_step = None
+        for step in all_steps:
+            if norm(step) not in seen:
+                next_step = norm(step)
+                break
+
+        # map next_step to dm_stage and build question list
+        if next_step == 'Initial Situation':
+            dm_stage = 0; questions = []
+        elif next_step and next_step.startswith('Inject'):
+            # only Inject 2 or 3
+            num = int(next_step.split()[1])
+            dm_stage = {2:3, 3:5}[num]
+            questions = []
+        elif next_step:
+            # decision X
+            # find in which block
+            questions = core if norm(core[0]['inject']) != next_step else core
+            # simplified: always load the full core/branch/final block
+            # compute index
+            for seq, blk, stage in (
+                (core, core,2), (branch,branch,4), (final,final,6)
+            ):
+                if any(norm(q['inject'])==next_step for q in blk):
+                    questions = blk
+                    dm_stage = stage
+                    break
+        else:
+            # all done
+            dm_stage = 7; questions = []
+
+        # store state
+        ss.all_questions = questions
+        ss.current_decision_index = (
+            None if not next_step or next_step.startswith('Inject')
+            else next((i for i,q in enumerate(questions) if norm(q['inject'])==next_step), None)
+        )
+        ss.dm_stage = dm_stage
+        ss._stage_locked = True
+
+        nav_to('dm_questionnaire')
+        return
 
 
 
