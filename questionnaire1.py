@@ -4568,8 +4568,7 @@ def apply_vital_consequences(answer_text: dict):
         "co2": "39 mmHg", "ecg": "Normal", "status": "online"
     }
     effects["Commander (CMO,IV2)"] = {"status": "offline"}
-    effects["FE-3(IV1)"] = {"status": "offline"}
-    #effects["IV2"] = {"status": "offline"}
+    effects["FE-2(IV1)"] = {"status": "offline"}
 
 
     # 3. After Inject 2 if Decision 15 ≠ A → drop SpO2
