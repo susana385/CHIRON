@@ -4240,12 +4240,12 @@ def _derive_stage_if_needed():
     ]
     # encontra último item presente
     next_stage_for_prefix = {
-        "Initial Situation": 1,
-        "Decision 1": 2,
-        "Inject 2": 3,
-        "Decision 16": 4,
-        "Inject 3": 5,
-        "Decision 17": 6,
+        "Initial Situation": 0,
+        "Decision 1":  1,
+        "Inject 2": 2,
+        "Decision 16": 3,
+        "Inject 3": 4,
+        "Decision 17": 5,
     }
 
     # Find last answered index
@@ -4422,8 +4422,8 @@ def run(supabase, simulation_name: str, role: str):
          "current_decision_index:", st.session_state.current_decision_index,
          "len(all_questions):", len(st.session_state.get("all_questions", [])))
 
-    st.write("🔍 [DEBUG run] stage =", st.session_state.get("dm_stage"))
-    st.write("🔍 [DEBUG run] answers:", st.session_state.get("answers"))
+    # st.write("🔍 [DEBUG run] stage =", st.session_state.get("dm_stage"))
+    # st.write("🔍 [DEBUG run] answers:", st.session_state.get("answers"))
     if stage == 0:
         handle_initial_start()
         return
