@@ -816,6 +816,7 @@ def _load_sim_and_participants(sim_id: str):
 def page_dm_role_claim():
 
     st.header("Simulation role assignment")
+    st_autorefresh(interval=7000, key="wait_for_role")
 
     sim_id  = st.session_state.simulation_id
     user_id = st.session_state.user.id
@@ -846,13 +847,11 @@ def page_dm_role_claim():
     me = next((p for p in parts if p["id_profile"] == user_id), None)
     if me is None:
         st.error("Waiting for the supervisor to invite you into this simulation…")
-        st_autorefresh(interval=5000, key="wait_for_invite")
         return
 
     # 4) If you haven’t been assigned yet, wait & auto‑refresh
     if not me.get("participant_role"):
         st.info("Waiting for your supervisor to assign your role…")
-        st_autorefresh(interval=5000, key="wait_for_role")
         return
 
     # 5) Show your role
