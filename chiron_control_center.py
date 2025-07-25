@@ -904,7 +904,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
     # —————————————————————
     # 1) On first entry, mark simulation + participant as started
     # —————————————————————
-    if st.session_state.dm_stage == 1 and not st.session_state.get("dm_started_marker", False):
+    if st.session_state.dm_stage == 0 and not st.session_state.get("dm_started_marker", False):
         # 1a) Update simulation
         try:
             now_iso = datetime.utcnow().isoformat() + "Z"
