@@ -1,7 +1,21 @@
+from dotenv import load_dotenv
+load_dotenv("supabase.env")
+
+try:
+    import streamlit as st
+    class _DummySecrets:
+        def get(self, key, default=None):
+            # always fall back to the real env var
+            return os.getenv(key, default)
+    st.secrets = _DummySecrets()
+except ImportError:
+    # if streamlit isn't even installed, no problem
+    pass
 import os
 from itertools import product
-#from supabase import create_client
-from supabase_client import supabase
+import os
+from itertools import product
+from supabase import create_client
 import questionnaire1
 from questionnaire1 import (
     decisions1to15,
@@ -11,7 +25,16 @@ from questionnaire1 import (
     decisions17to26,
 )
 
-# 1) Pull out the FD key‐decision options from the core block
+
+# 1) Load from env
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError("Set SUPABASE_URL and SUPABASE_KEY as environment variables")
+
+# 2) Initialize the client
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 
 def options_for(prefix, blocks):
     for d in blocks:
