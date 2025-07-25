@@ -3175,7 +3175,11 @@ def page_running_simulations():
             branch = decisions17to19_12C[:]
         else:
             branch = []
+        st.write("🔍 [DEBUG final key]", repr(a12), repr(a15))
+        st.write("🔍 [DEBUG final keys available]", len(decisions17to26), "combinations")
+
         final = decisions17to26.get((a12,a15), [])
+        st.write("🔍 [DEBUG final length]", len(final))
 
         # assemble all_steps
         all_steps = ['Initial Situation']
