@@ -4205,7 +4205,7 @@ def handle_initial_start():
         st.rerun()
         return
 
-    if st.button("▶️ Start Simulation"):
+    if st.button("▶️ Start Simulation", key="initial_start"):
         _persist_inject_done(sim_id, part_id, "Initial Situation")
         st.session_state.answers["Initial Situation"] = "DONE"
         st.session_state.dm_stage = 1
