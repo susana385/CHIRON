@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from supabase_client import supabase
+from streamlit_autorefresh import st_autorefresh
 
 GRACE_SECONDS = 60
 
@@ -4439,6 +4440,7 @@ def run(supabase, simulation_name: str, role: str):
     except Exception as e:
         # you could check isinstance(e, httpx.ReadError) if you want to be more specific
         st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=1000, limit=None, key="wait")
         return
     if not st.session_state.get("_stage_locked"):
         _derive_stage_if_needed()

@@ -909,6 +909,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
     except Exception as e:
         # you could check isinstance(e, httpx.ReadError) if you want to be more specific
         st.info("⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=1000, limit=None, key="wait")
         return
     
     answer_idx = build_answer_index()
@@ -2993,6 +2994,7 @@ def page_running_simulations():
             resp = fetch_simulations_with_retry()
         except Exception:
             st.info("Still loading… please wait a moment.")
+            st_autorefresh(interval=1000, limit=None, key="wait")
             return
     sims = resp.data or []
     # filter only running sims, newest first
