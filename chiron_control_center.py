@@ -728,20 +728,14 @@ def participant_new_simulation():
     st.write(f"**{sim['name']}**  \nCreated at: `{created_at}`  \nRoles claimed: **{claimed}/{MAX_ROLES}**")
 
     # Prevent accidental rejoin if already in another simulation
-    in_other = (current_sim_id is not None) and (current_sim_id != sim["id"])
-
-    # Disabled final TEM de ser bool
-    disabled_join = bool(is_full or in_other)
 
     if is_full:
         help_text = f"Simulation full ({claimed}/{MAX_ROLES})."
-    elif in_other:
-        help_text = "You are already in another simulation. Leave it first."
     else:
         help_text = f"{claimed}/{MAX_ROLES} roles claimed."
 
 
-    if st.button("Join this Simulation", disabled=disabled_join, help=help_text):
+    if st.button("Join this Simulation", help=help_text):
         # reset delta caches to avoid leaking old answers context
         st.session_state.answers_cache          = []
         st.session_state.participants_cache     = []
