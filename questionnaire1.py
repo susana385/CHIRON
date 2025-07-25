@@ -3495,8 +3495,15 @@ def display_inject2():
 # --------------------------------------------------------- Show Injects ----------------------------------------------------
 
 def show_initial_situation():
+    sim_id  = st.session_state.simulation_id
+    part_id = st.session_state.participant_id
     st.subheader("🚀 Initial Situation")  
     st.write("For the 17th day of the mission, an EVA is planned to install a component on a radiation collection device. **EVA Crew:** EVA1 (Mission Specialist) & EVA2 (Flight Engineer) **Inside Crew:** Commander (CMO) & FE-3(IV1) (IV Crew Member).")
+    if st.button("▶️ Start Simulation"):
+        _persist_inject_done(sim_id, part_id, "Initial Situation")
+        st.session_state.answers["Initial Situation"] = "DONE"
+        st.session_state.dm_stage = 1
+        st.rerun()
 
 
 def inject3():
@@ -4417,7 +4424,7 @@ def run(supabase, simulation_name: str, role: str):
 
 
     if stage == 0:
-        handle_initial_start()
+        show_initial_situation()
         return
     elif stage == 1:
         handle_decision_block()

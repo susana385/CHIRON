@@ -746,6 +746,15 @@ def participant_new_simulation():
         st.session_state.loaded_35to43          = False
         st.session_state.simulation_id      = sim["id"]
         st.session_state.simulation_name    = sim["name"]
+        st.session_state.dm_stage               = 0
+        st.session_state._stage_locked          = False
+        st.session_state.current_decision_index = None
+        st.session_state.all_questions          = []
+        # clear any “you‐clicked‐inject” flags so handle_initial_start() will show the start button
+        st.session_state.inject1_clicked = False
+        st.session_state.inject2_clicked = False
+        st.session_state.inject3_clicked = False
+        st.session_state.inject4_clicked = False
         my_username = st.session_state.profile["username"]
         my_profile  = st.session_state.profile_id
 
