@@ -3134,6 +3134,7 @@ def page_running_simulations():
             seen |= {"Decision 12", "Decision 15"}
 
         # find next_step
+        seen.add("Initial Situation")
         next_step = None
         for step in all_steps:
             if norm(step) not in seen:
