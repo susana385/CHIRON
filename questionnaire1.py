@@ -3933,7 +3933,11 @@ def _render_standard_decision(sim_id, part_id, role, decision, qdata, inject_ful
             ans = st.radio("Choose:", [placeholder] + options, key=answer_key)
             valid = ans != placeholder
     else:
-        ans = "Did't have a decision to make."
+        # no options → use the role‑specific prompt as the “answer”
+        prompt_text = qdata.get("text", "")
+        st.info(f"*Note:* this role has no choices here, so we’re showing your prompt above as your “answer.”")
+        st.write(prompt_text)
+        ans = prompt_text
         valid = True
 
     if st.button("Submit ➡", key=f"submit_{prefix}", disabled=not valid):
