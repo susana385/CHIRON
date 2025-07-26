@@ -3273,7 +3273,7 @@ def show_tlx_questionnaire():
 
         st.session_state.tlx_answers = responses
         st.success("✅ TLX submitted!")
-        st.session_state.dm_stage = 9
+        st.session_state.dm_stage = 8
         st.session_state._tlx_saving = False
         st.rerun()
     else:
@@ -4371,6 +4371,11 @@ def handle_final_page():
         "think they should return to earth knowing that the trip could take up to 3 days?"
     )
 
+    question_test=("Eva 1 was really having an ischemic stroke and the object would collide with "
+        "the station creating a very small hole. The atmospheric pressure loss would "
+        "happen very slowly and only be detected days later. With this in mind, do you "
+        "think they should return to earth knowing that the trip could take up to 3 days?")
+
     # Give them a place to type their recommendation
     recommendation = st.text_area("Your recommendation:", height=150)
 
@@ -4382,6 +4387,7 @@ def handle_final_page():
                 "id_simulation":   sim_id,
                 "id_participant":  part_id,
                 "inject":          "Post‑Simulation Question",
+                "question_text": question_test,
                 "answer_text":     recommendation,
                 "response_seconds": _elapsed_seconds("stage6"),  # use your timer util or 0
                 "penalty":         0
@@ -4547,7 +4553,8 @@ def get_inject_text(inject_id: str) -> str:
                 return"(10:45:00): EVA 1 shows confusion and shortness of breath due to lack of pressure adaptation."
             elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
                 return "(10:35:00): EVA 1 has discomfort in ears and sinuses."
-            elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and (answer_15 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
+            elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and (answer_15 == ""
+            "" or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
                 return"(10:35:00): EVA 1 shows chest pain and shortness of breath due to confusion."
     elif inject_id == "Inject 3":
             return("""(11:05:00)
