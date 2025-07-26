@@ -1687,11 +1687,11 @@ def page_dashboard():
     try:
         tw_resp = supabase\
             .from_("teamwork")\
-            .select("team_type")\
+            .select("team")\
             .eq("id_simulation", sim_id)\
             .execute()
         all_rows = tw_resp.data or []
-        submitted_types = { row["team_type"] for row in all_rows if row.get("team_type") }
+        submitted_types = { row["team"] for row in all_rows if row.get("team") }
     except Exception:
         st.info("⏳ Checking teamwork submissions… please wait.")
         return
