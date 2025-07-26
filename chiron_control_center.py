@@ -2817,7 +2817,6 @@ def page_individual_results():
             return []
 
     max_rows = fetch_role_maxes(dm_role, scenario_code)
-    st.write("DBG max_rows:", max_rows)
 
     RAW_TO_TOTAL = {
         "basic_life_support":             "basic_life_support_total",
