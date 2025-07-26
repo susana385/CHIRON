@@ -756,12 +756,21 @@ def participant_new_simulation():
     if not sims:
         st.info(f"No pending simulations created in the last {MINUTES_WINDOW} minutes—please wait for a supervisor.")
         return
+    
+    part_res = supabase.from_("participant") \
+    .select("id, participant_role") \
+    .eq("id_simulation", sim["id"]) \
+    .eq("id_profile", st.session_state.profile_id) \
+    .maybe_single() \
+    .execute()
+
+    me = getattr(part_res, "data", None)
 
     sim = sims[0]
     claimed        = len(sim.get("roles_logged") or [])
     is_full        = claimed >= MAX_ROLES
     current_sim_id = st.session_state.get("simulation_id")
-    if claimed >= MAX_ROLES:
+    if claimed >= MAX_ROLES and me is None:
         st.info("The newest pending simulation is already full — please wait for a new one.")
         return
 
@@ -775,15 +784,6 @@ def participant_new_simulation():
         help_text = f"Simulation full ({claimed}/{MAX_ROLES})."
     else:
         help_text = f"{claimed}/{MAX_ROLES} roles claimed."
-
-    part_res = supabase.from_("participant") \
-    .select("id, participant_role") \
-    .eq("id_simulation", sim["id"]) \
-    .eq("id_profile", st.session_state.profile_id) \
-    .maybe_single() \
-    .execute()
-
-    me = getattr(part_res, "data", None)
 
 
     join_label = "Join this Simulation" if me is None else "Re‑enter Simulation"
@@ -894,7 +894,7 @@ def page_dm_role_claim():
             .execute()
             .data or []
         )
-        
+        profile_ids = [p["id_profile"] for p in parts]
         profiles = (
             supabase
             .from_("profiles")
@@ -908,7 +908,7 @@ def page_dm_role_claim():
         st_autorefresh(interval=2000, limit=None, key="retry_answers")
         return
     
-    profile_ids = [p["id_profile"] for p in parts]
+    
     username_map = {p["id"]: p["username"] for p in profiles}
 
     # 3) Find *your* participant record
