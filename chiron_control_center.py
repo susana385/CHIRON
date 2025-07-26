@@ -2811,8 +2811,13 @@ def page_individual_results():
     # ---------- RAW ANSWERS (with penalties etc.) ----------
     st.markdown("---")
     st.subheader("📝 Your Raw Answers")
-
+    
     my_answers = fetch_my_answers_full(sim_id, part_id)
+    if my_answers is None:
+        st.info("⏳ Loading… please wait a moment.")
+        from streamlit_autorefresh import st_autorefresh
+        st_autorefresh(interval=2000, limit=None, key="retry_individual_results")
+        return
 
     import pandas as pd, re
     df_raw = pd.DataFrame(my_answers)
