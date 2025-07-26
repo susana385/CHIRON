@@ -3453,16 +3453,29 @@ def resilient_lookup(fn, attempts=4, base=0.05):
 
 
 def classify_decision7(ans: str | None) -> str | None:
-    if not ans: return None
-    if ans.startswith("A. Partial"):  return "A"
-    if ans.startswith("B.Normal"):    return "B"
-    if ans.startswith("C.Emergency"): return "C"
+    """
+    Take FD’s Decision 12 answer like "A.Partial …", "B.Normal …", "C.Emergency …"
+    and return the leading letter A, B or C.
+    """
+    if not ans:
+        return None
+    letter = ans.split(".", 1)[0]
+    if letter in ("A", "B", "C"):
+        return letter
     return None
 
+
 def classify_decision13(ans: str | None) -> str | None:
-    if not ans: return None
-    if ans.startswith("A.Breathe"): return "A"
-    if ans[0:2] in ("B.", "C.", "D."): return "OTHER"
+    """
+    Take FD’s Decision 15 answer and return "A" if it was A.*, or "OTHER" for B/C/D.
+    """
+    if not ans:
+        return None
+    letter = ans.split(".", 1)[0]
+    if letter == "A":
+        return "A"
+    if letter in ("B", "C", "D"):
+        return "OTHER"
     return None
 
 INJECT2_MAP = {
