@@ -901,7 +901,7 @@ def page_dm_role_claim():
             .data or []
         )
     except Exception:
-        st.info("⏳ Loading… please wait a moment.")
+        st.info("⏳ Wait for the supervisor to assign you a role...")
         st_autorefresh(interval=2000, limit=None, key="retry_answers")
         return
     
