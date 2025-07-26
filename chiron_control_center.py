@@ -1702,10 +1702,24 @@ def page_dashboard():
             "have been submitted."
         )
         return
-
-
-    # (Optional) Check if simulation is finished (if you want gating)
-    status = st.session_state.get("simulation_status")
+    
+    try:
+        res = (
+            supabase
+            .from_("simulation")
+            .select("status")
+            .eq("id", sim_id)
+            .single()
+            .execute()
+        )
+        sim_meta = res.data or {}
+    except APIError as e:
+        st.info("Could not read simulation meta.⏳ Loading… please wait a moment.")
+        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        return
+        
+    
+    status       = sim_meta.get("status")
     if status != "finished":
         st.info("Simulation not marked finished yet.")
         return
