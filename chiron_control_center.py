@@ -74,7 +74,6 @@ def fetch_snapshot(sim_id: str, last_answer_id: int):
             .data or [])
     except Exception as e:
         st.info("⏳ Loading… please wait a moment.")
-        st_autorefresh(interval=2000, limit=None, key="loading")
         return
 
 
