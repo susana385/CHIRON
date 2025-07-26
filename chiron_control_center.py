@@ -1021,7 +1021,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
       "FD", "FS", "BME", "CAPCOM",
     ]
 
-    if st.session_state.get("dm_stage") == 13 and st.button("✅ Submit and Continue", key=f"{key_prefix}-submit_continue"):
+    if st.session_state.get("dm_stage") == 8 and st.button("✅ Submit and Continue", key=f"{key_prefix}-submit_continue"):
         # 1) mark this participant finished
         try:
             finish_iso = datetime.utcnow().isoformat() + "Z"
