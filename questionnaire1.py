@@ -4627,7 +4627,7 @@ def apply_vital_consequences(answer_text: dict):
     FD_15 = get_role_decision_answer("Decision 15", "FD")
     FD_12 = get_role_decision_answer("Decision 12", "FD")
     FD_16 = get_role_decision_answer("Decision 16", "FD")
-    FS_19 = get_role_decision_answer("Decision 21", "FS")
+    FS_19 = get_role_decision_answer("Decision 19", "FS")
     FS_21 = get_role_decision_answer("Decision 21", "FS")
     FS_23 = get_role_decision_answer("Decision 23", "FS")
     commander_18 = get_role_decision_answer("Decision 18", "Commander(CMO,IV2)")
@@ -4707,6 +4707,7 @@ def apply_vital_consequences(answer_text: dict):
                 effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
                 effects["FE-1(EV1)"]["spo2"] = "86%"
             if FS_23 is not None:
+                effects["FE-3(EV2)"]["status"] = "offline"
                 effects["FE-1(EV1)"]["spo2"] = "96%"
                 effects["FE-1(EV1)"]["hr"] = "91 bpm"
                 effects["FE-1(EV1)"]["rr"] = "22 rpm"
@@ -4732,6 +4733,7 @@ def apply_vital_consequences(answer_text: dict):
                 effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
                 effects["FE-1(EV1)"]["spo2"] = "86%"
             if FS_23 is not None:
+                effects["FE-3(EV2)"]["status"] = "offline"
                 effects["FE-1(EV1)"]["spo2"] = "96%"
                 effects["FE-1(EV1)"]["hr"] = "91 bpm"
                 effects["FE-1(EV1)"]["rr"] = "22 rpm"
@@ -4759,6 +4761,7 @@ def apply_vital_consequences(answer_text: dict):
                 effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
                 effects["FE-1(EV1)"]["spo2"] = "86%"
             if FS_23 is not None:
+                effects["FE-3(EV2)"]["status"] = "offline"
                 effects["FE-1(EV1)"]["spo2"] = "96%"
                 effects["FE-1(EV1)"]["hr"] = "91 bpm"
                 effects["FE-1(EV1)"]["rr"] = "22 rpm"
@@ -4791,6 +4794,7 @@ def apply_vital_consequences(answer_text: dict):
                 effects["FE-1(EV1)"]["bp"] = "135/86 mmHg"
                 effects["FE-1(EV1)"]["spo2"] = "99%"
         if FS_23 is not None:
+                effects["FE-3(EV2)"]["status"] = "offline"
                 effects["FE-1(EV1)"]["spo2"] = "98%"
                 effects["FE-1(EV1)"]["hr"] = "91 bpm"
                 effects["FE-1(EV1)"]["rr"] = "22 rpm"
