@@ -1684,10 +1684,23 @@ def page_dashboard():
     st.markdown("---")
 
     # 6) Teamwork gating
-    submitted = is_teamwork_complete(sim_id)
-    # 6) Teamwork gating
-    if not is_teamwork_complete(sim_id):
-        st.warning("🔒 Team Results will be available after the teamwork assessment is submitted.")
+    try:
+        tw_resp = supabase\
+            .from_("teamwork")\
+            .select("team_type")\
+            .eq("id_simulation", sim_id)\
+            .execute()
+        all_rows = tw_resp.data or []
+        submitted_types = { row["team_type"] for row in all_rows if row.get("team_type") }
+    except Exception:
+        st.info("⏳ Checking teamwork submissions… please wait.")
+        return
+
+    if len(submitted_types) < 3:
+        st.warning(
+            "🔒 Team Results will be available once **all three** team assessment forms "
+            "have been submitted."
+        )
         return
 
 
