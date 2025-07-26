@@ -3210,11 +3210,17 @@ def page_running_simulations():
             return
         raw = getattr(ans_resp, 'data', []) or []
 
+        st.write("🔍 raw answers for", role, raw)
+
+
         # normalize helper
         import re
         def norm(x):
             m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', x.strip())
             return m.group(1) if m else x.strip()
+        
+        st.write("🔍 DEBUG raw answers for PID", part['id'], ":", raw)
+
 
         seen = set()
         for r in raw:
