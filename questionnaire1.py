@@ -3689,29 +3689,46 @@ def _render_key_fd_decision(sim_id, part_id, role, decision, qdata, prefix):
             st.rerun()
 
 def _timer_block(prefix, decision):
-    max_time = decision.get("max_time", 300)
-    elapsed  = _elapsed_seconds(prefix)
+    max_time  = decision.get("max_time", 300)
+    elapsed   = _elapsed_seconds(prefix)
     remaining = max_time - elapsed
-    unique_timer_id = f"timer_{prefix.replace(' ','_')}"
+    uid       = f"timer_{prefix.replace(' ','_')}"
+
     timer_html = f"""
-<div id="{unique_timer_id}" style="font-family:'Georgia',serif;font-size:20px;
- font-weight:bold;color:#b30000;background:#F4F6F7;padding:8px;border-radius:8px;text-align:center;"></div>
+<div id="{uid}"
+     style="font-family:'Georgia',serif;
+            font-size:20px;font-weight:bold;
+            color:#b30000;background:#F4F6F7;
+            padding:8px;border-radius:8px;
+            text-align:center;">
+</div>
 <script>
-var t = {remaining};
-var el = document.getElementById("{unique_timer_id}");
-function tick(){{
-  if(t >= 0) {{
-    el.innerHTML = t + " s remaining";
-  }} else {{
-    el.innerHTML = "Time exceeded. Penalty 1 pt";
+  var t = {remaining};                   // t starts at remaining seconds
+  var el = document.getElementById("{uid}");
+  function tick() {{
+    if (t >= 0) {{
+      el.innerHTML = t + " s remaining";
+    }} else if (t >= -60) {{
+      // once t goes negative, -t is how many seconds since deadline,
+      // so 60 + t is how many seconds left in the penalty window
+      var penaltySecondsLeft = 60 + t;
+      el.innerHTML = 
+        "Time exceeded. Penalty 1 pt. " +
+        "You have " + penaltySecondsLeft + " s to choose " +
+        "or the worst‑score option will be picked.";
+    }} else {{
+      // t < -60: penalty window expired → reload page
+      window.location.reload();
+      return;
+    }}
+    t--;
+    setTimeout(tick, 1000);
   }}
-  t--;
-  setTimeout(tick,1000);
-}}
-tick();
+  tick();
 </script>
 """
-    st.components.v1.html(timer_html, height=70)
+    st.components.v1.html(timer_html, height=80)
+
 
 
 def _persist_answer(sim_id, part_id, decision, qdata, answer, penalty=0, elapsed_s=0):
@@ -3944,7 +3961,7 @@ def _render_standard_decision(sim_id, part_id, role, decision, qdata, inject_ful
     max_time = decision.get("max_time", 300)
     if max_time < elapsed <= max_time + GRACE_SECONDS:
         remaining = max_time + GRACE_SECONDS - elapsed
-        st.warning(f"You exceeded the max time. 1‑pt penalty applied. Auto-select in **{remaining} s**.")
+        st.warning(f"Auto-select in **{remaining} s**.")
         from streamlit_autorefresh import st_autorefresh
         st_autorefresh(interval=1000, key=f"grace_tick_{prefix}")
 
