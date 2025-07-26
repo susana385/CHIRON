@@ -3961,7 +3961,7 @@ def _render_standard_decision(sim_id, part_id, role, decision, qdata, inject_ful
     max_time = decision.get("max_time", 300)
     if max_time < elapsed <= max_time + GRACE_SECONDS:
         remaining = max_time + GRACE_SECONDS - elapsed
-        st.warning(f"Auto-select in **{remaining} s**.")
+        #st.warning(f"Auto-select in **{remaining} s**.")
         from streamlit_autorefresh import st_autorefresh
         st_autorefresh(interval=1000, key=f"grace_tick_{prefix}")
 
