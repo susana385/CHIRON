@@ -4371,10 +4371,7 @@ def handle_final_page():
         "think they should return to earth knowing that the trip could take up to 3 days?"
     )
 
-    question_test=("Eva 1 was really having an ischemic stroke and the object would collide with "
-        "the station creating a very small hole. The atmospheric pressure loss would "
-        "happen very slowly and only be detected days later. With this in mind, do you "
-        "think they should return to earth knowing that the trip could take up to 3 days?")
+    question_test="Eva 1 was really having an ischemic stroke and the object would collide with the station creating a very small hole. The atmospheric pressure loss would happen very slowly and only be detected days later. With this in mind, do you think they should return to earth knowing that the trip could take up to 3 days?"
 
     # Give them a place to type their recommendation
     recommendation = st.text_area("Your recommendation:", height=150)
