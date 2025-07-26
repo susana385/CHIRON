@@ -756,6 +756,9 @@ def participant_new_simulation():
     if not sims:
         st.info(f"No pending simulations created in the last {MINUTES_WINDOW} minutes—please wait for a supervisor.")
         return
+
+    sim = sims[0]
+    
     
     part_res = supabase.from_("participant") \
     .select("id, participant_role") \
