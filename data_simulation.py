@@ -106,7 +106,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
     st.header(f"🚀 Decision Suport Dashboard: {simulation_name}")
     _ensure_answer_indexes()
     preload_answers(st.session_state.get("simulation_id"))
-    apply_vital_consequences({})
+    apply_vital_consequences({})   
 
     effects_all = st.session_state.setdefault("vital_effects", {})
 
@@ -127,6 +127,7 @@ def run(simulation_name: str, updates:int=10, delay:float=1.0):
             # Fase inicial: gerar valores variáveis até decisão 7
             _ensure_answer_indexes()
             preload_answers(st.session_state.get("simulation_id"))
+            apply_vital_consequences({})
 
             answered1 = is_decision_answered("Decision 1")
             if not answered1:
