@@ -722,7 +722,7 @@ def participant_new_simulation():
             nav_to("welcome")
 
     st_autorefresh(interval=5000, key="pending_autorefresh")
-    MINUTES_WINDOW = 30
+    MINUTES_WINDOW = 60
     MAX_ROLES = 8
 
     @st.cache_data(ttl=5)
