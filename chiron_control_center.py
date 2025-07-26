@@ -3424,6 +3424,7 @@ def page_past_simulations():
                         .from_("participant")
                         .select("id, participant_role")
                         .eq("id_simulation", sim["id"])
+                        .maybe_single() 
                         .execute()
                     )
                 except Exception:
