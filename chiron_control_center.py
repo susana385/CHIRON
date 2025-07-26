@@ -550,7 +550,7 @@ def roles_claimed_supervisor():
         return
     joined = sim_meta.get("participants_logged", [])
     st.markdown("**Participants in lobby:**")
-    st_autorefresh(interval=5000, key="wait_for_invite")
+    st_autorefresh(interval=10000, key="wait_for_invite")
     for u in joined:
         st.write("• " + u)
     st.markdown("---")
@@ -567,7 +567,7 @@ def roles_claimed_supervisor():
         )
     except Exception:
         st.info("⏳ Loading… please wait a moment.")
-        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        st_autorefresh(interval=10000, limit=None, key="retry_answers")
         return
 
     # 2) Build a map of profile_id → username
@@ -583,7 +583,7 @@ def roles_claimed_supervisor():
         )
     except Exception:
         st.info("⏳ Loading… please wait a moment.")
-        st_autorefresh(interval=2000, limit=None, key="retry_answers")
+        st_autorefresh(interval=10000, limit=None, key="retry_answers")
         return
     username_map = {prof["id"]: prof["username"] for prof in profiles}
 
