@@ -776,8 +776,18 @@ def participant_new_simulation():
     else:
         help_text = f"{claimed}/{MAX_ROLES} roles claimed."
 
+    part_res = supabase.from_("participant") \
+    .select("id, participant_role") \
+    .eq("id_simulation", sim["id"]) \
+    .eq("id_profile", st.session_state.profile_id) \
+    .maybe_single() \
+    .execute()
 
-    if st.button("Join this Simulation", help=help_text):
+    me = getattr(part_res, "data", None)
+
+
+    join_label = "Join this Simulation" if me is None else "Re‑enter Simulation"
+    if st.button(join_label, help=help_text):
         # reset delta caches to avoid leaking old answers context
         st.session_state.answers_cache          = []
         st.session_state.participants_cache     = []
@@ -829,25 +839,18 @@ def participant_new_simulation():
                 st_autorefresh(interval=2000, limit=None, key="retry_answers")
                 return
             
-        try:
-            resp = (
-                supabase
-                .from_("participant")
-                .insert({
-                    "id_simulation":   sim["id"],
-                    "id_profile":      my_profile,
-                    "participant_role": None
-                })
-                .execute()
-            )
-        except APIError as e:
-            st.info("Could not join simulation.⏳ Loading… please wait a moment.")
-            st_autorefresh(interval=2000, limit=None, key="retry_answers")        # show full dict (code, message, hint, detail)
-            return
-        
-        # grab the newly‑inserted participant row
-        new_participant = resp.data[0]
-        st.session_state.participant_id = new_participant["id"]
+        if me is None:
+            # first time joining → INSERT
+            part_ins = supabase.from_("participant").insert({
+                "id_simulation":    sim["id"],
+                "id_profile":       my_profile,
+                "participant_role": None
+            }).execute()
+            new_part = part_ins.data[0]
+            st.session_state.participant_id = new_part["id"]
+        else:
+            # already have a row → reuse it
+            st.session_state.participant_id = me["id"]
 
         nav_to("dm_role_claim")
 
