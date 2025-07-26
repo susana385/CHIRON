@@ -3505,14 +3505,12 @@ def display_inject2():
 
     a12  = get_role_decision_answer("Decision 12", "FD")
     a15  = get_role_decision_answer("Decision 15", "FD")
-    st.write(a12,a15)
     if not a12 or not a15:
         st.info("⏳ Waiting for FD to answer the key decision…")
         return
 
     # Build the key for both maps
     k = (classify_decision7(a12), classify_decision13(a15))
-    st.write(k)
 
     # Start with the standard text
     txt = INJECT2_MAP.get(k)
