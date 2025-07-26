@@ -3419,20 +3419,22 @@ def page_past_simulations():
             with col2:
                 # choose a role to inspect
                 try:
+                    # fetch *all* participants in this simulation
                     part_resp = (
                         supabase
                         .from_("participant")
                         .select("id, participant_role")
                         .eq("id_simulation", sim["id"])
-                        .maybe_single() 
                         .execute()
                     )
                 except Exception:
                     st.info("⏳ Loading… please wait a moment.")
                     st_autorefresh(interval=2000, limit=None, key="retry_answers")
                     return
-                if part_resp.error:
-                    st.error(f"Couldn’t load participants: {part_resp.error.message}")
+
+                # Supabase returns PostgrestResponse: check HTTP status
+                if part_resp.status_code >= 400:
+                    st.error(f"Couldn’t load participants (HTTP {part_resp.status_code}).")
                     return
 
                 participants = part_resp.data or []
@@ -3441,8 +3443,11 @@ def page_past_simulations():
                     return
 
                 role_map = {p["participant_role"]: p["id"] for p in participants}
-                choice = st.selectbox("Pick a role", list(role_map.keys()),
-                                      key=f"sup_select_{sim['id']}")
+                choice = st.selectbox(
+                    "Pick a role",
+                    options=list(role_map.keys()),
+                    key=f"sup_select_{sim['id']}"
+                )
                 if st.button("👤 View Individual Results", key=f"sup_view_{sim['id']}"):
                     st.session_state.participant_id = role_map[choice]
                     st.session_state.dm_role        = choice
