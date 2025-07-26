@@ -1591,6 +1591,25 @@ def teamwork_submitted(sim_id: int):
     except Exception:
         return False
 
+@st.cache_data(ttl=60)
+def is_teamwork_complete(sim_id: int) -> bool:
+    try:
+        resp = (
+            supabase
+            .from_("teamwork")
+            .select("team_type")
+            .eq("simulation_id", sim_id)
+            .execute()
+        )
+        rows = resp.data or []
+        # collect distinct team types
+        types = {r["team_type"] for r in rows if r.get("team_type")}
+        return len(types) >= 3
+    except Exception:
+        # network hiccup or similar → treat as “not yet submitted”
+        return False
+
+
 def page_dashboard():
     sim_id   = st.session_state.get("simulation_id")
     sim_name = st.session_state.get("simulation_name", "")
@@ -1665,10 +1684,12 @@ def page_dashboard():
     st.markdown("---")
 
     # 6) Teamwork gating
-    submitted = teamwork_submitted(sim_id)
-    if not submitted:
+    submitted = is_teamwork_complete(sim_id)
+    # 6) Teamwork gating
+    if not is_teamwork_complete(sim_id):
         st.warning("🔒 Team Results will be available after the teamwork assessment is submitted.")
         return
+
 
     # (Optional) Check if simulation is finished (if you want gating)
     status = st.session_state.get("simulation_status")
