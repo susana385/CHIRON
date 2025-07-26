@@ -3499,6 +3499,7 @@ def display_inject2():
 
     # Build the key for both maps
     k = (classify_decision7(a12), classify_decision13(a15))
+    st.write(k)
 
     # Start with the standard text
     txt = INJECT2_MAP.get(k)
