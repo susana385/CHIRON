@@ -4562,19 +4562,18 @@ def get_inject_text(inject_id: str) -> str:
         answer_15 = get_role_decision_answer("Decision 15", "FD")
         inject2_text = ""
         if answer_12 and answer_15:
-            if (answer_12 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
-                return "(10:40:00): The repressurization has finished successfully at 12 psi. EVA 1 shows signs of confusion."
-            elif (answer_12 == "A.Partial pressurisation finishing at 12 psi (~10 min.)" and (answer_15 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
-                return "(10:40:00): EVA 1 showed confusion due to breathing issues, now presenting sharp chest pain and shortness of breath."
-            elif (answer_12 == "B.Normal repressurization (~15 min.)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
-                return "(10:45:00): EVA 1 shows confusion and difficulty understanding what’s happening."
-            elif (answer_12 == "B.Normal repressurization (~15 min.)" and (answer_15 == "B. Instruct CAPCOM to remind the EVs to pay attention to the temperature of the Airlock." or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
-                return"(10:45:00): EVA 1 shows confusion and shortness of breath due to lack of pressure adaptation."
-            elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and answer_15 == "A. Instruct CAPCOM to remind the EVs to breathe frequently, do not sustain respiration."):
-                return "(10:35:00): EVA 1 has discomfort in ears and sinuses."
-            elif (answer_12 == "C.Emergency pressurisation at a rate of 1.0 psi/second (~5 min)" and (answer_15 == ""
-            "" or answer_15 == "C. Instruct CAPCOM to remind the EVs to make sure the door is well closed." or answer_15 == "D. Instruct CAPCOM to remind the BME to keep monitoring EV1 vital signals.")):
-                return"(10:35:00): EVA 1 shows chest pain and shortness of breath due to confusion."
+            role = st.session_state.get("dm_role") or st.session_state.get("user_role")
+            a12  = get_role_decision_answer("Decision 12", "FD")
+            a15  = get_role_decision_answer("Decision 15", "FD")
+            if not a12 or not a15:
+                return "⏳ Waiting for FD to answer the key decision…"
+            k = (classify_decision7(a12), classify_decision13(a15))
+            # base text
+            txt = INJECT2_MAP.get(k)
+            # override for FE-1(EV1)
+            if role == "FE-1(EV1)":
+                txt = INJECT2_MAP_FE1.get(k, txt)
+            return txt or "_No prompt defined for Inject 2_"
     elif inject_id == "Inject 3":
             return("""(11:05:00)
         Days before there was a manoeuvre of the Lunar Gateway to avoid a possible collision with an object.
