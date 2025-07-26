@@ -2223,7 +2223,7 @@ def page_team_results():
 
     fd_map = fetch_fd_answers_map(sim_id, fd_id)
 
-    missing = [k for k in ["Decision 12","Decision 15","Decision 23","Decision 34"] if k not in fd_map]
+    missing = [k for k in ["Decision 12","Decision 15"] if k not in fd_map]
     if missing:
         st.error(f"Missing FD key decisions: {', '.join(missing)}")
         return
@@ -2237,8 +2237,6 @@ def page_team_results():
     scenario_code = ",".join([
         scenario_token("Decision 12",  fd_map["Decision 12"]),
         scenario_token("Decision 15", fd_map["Decision 15"]),
-        scenario_token("Decision 23", fd_map["Decision 23"]),
-        scenario_token("Decision 34", fd_map["Decision 34"]),
     ])
     st.caption(f"**Scenario code:** `{scenario_code}`")
 
