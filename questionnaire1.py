@@ -747,7 +747,7 @@ decisions17to26={
 
         {"inject": "Decision 24 (11:40:00): ", 
         "role_specific": {
-            "Commander(CMO,IV2)": {"text":"You’re in communication with MCC"},
+            "Commander(CMO,IV2)": {"text":"Wait for instructions from the Flight Surgeon"},
             "FE-2(IV1)": {"text": "After completing the tasks communicated by the CAPCOM. You now start the relocation to the CRV. In discution with FE-3(EV2), how are you transporting FE-1(EV1)?", "options": ["A. Attach EVA 1 securely to the Crew Mobility Restraint (CMR) system to minimise movement and maintain stability throughout transit.","B. Manually guide EVA 1 to the Crew Rescue Vehicle (CRV), ensuring controlled progress along a predetermined path.","C. Integrate both systems—first restrain EVA 1 using the CMR, then guide him toward the CRV—to maximise safety by merging immobilisation with controlled movement.","D. Allow EVA 1 to use a SAFER (Simplified Aid for EVA Rescue) unit for self-mobility while remaining tethered to a guideline, providing flexibility in movement coupled with a safety backup."],
         "scores":  [
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #A
@@ -763,8 +763,8 @@ decisions17to26={
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #C
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
         ],"max_time": 300},
-            "FD": {"text": "Receive information from CAPCOM."},
-            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)?", 
+            "FD": {"text": "Assit the team"},
+            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)? Communicate your decision to the Commander.", 
      "options": [
          "A. Crew Medical Restraint System (CMR)", 
          "B. Emergency Medical Treatment Pack - Medications (Red) & Other components", 
@@ -822,7 +822,7 @@ decisions17to26={
     ],
      "multi": True,
     "max_time": 300},
-            "CAPCOM": {"text": "Communicate FS orders to Commander and FD "},
+            "CAPCOM": {"text": "Assit the team"},
         }
     },
 
@@ -1585,7 +1585,7 @@ decisions17to26={
 
         {"inject": "Decision 24 (11:35:00): ", 
         "role_specific": {
-            "Commander(CMO,IV2)": {"text":"You’re in communication with MCC"},
+            "Commander(CMO,IV2)": {"text":"Wait for instructions from the Flight Surgeon"},
             "FE-2(IV1)": {"text": "After completing the tasks communicated by the CAPCOM. You now start the relocation to the CRV. In discution with FE-3(EV2), how are you transporting FE-1(EV1)?", "options": ["A. Attach EVA 1 securely to the Crew Mobility Restraint (CMR) system to minimise movement and maintain stability throughout transit.","B. Manually guide EVA 1 to the Crew Rescue Vehicle (CRV), ensuring controlled progress along a predetermined path.","C. Integrate both systems—first restrain EVA 1 using the CMR, then guide him toward the CRV—to maximise safety by merging immobilisation with controlled movement.","D. Allow EVA 1 to use a SAFER (Simplified Aid for EVA Rescue) unit for self-mobility while remaining tethered to a guideline, providing flexibility in movement coupled with a safety backup."],
         "scores":  [
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #A
@@ -1601,8 +1601,8 @@ decisions17to26={
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #C
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
         ],"max_time": 300},
-            "FD": {"text": "Receive information from CAPCOM."},
-            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)?", 
+            "FD": {"text": "Assit the team"},
+            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)? Communicate your decision to the Commander.", 
      "options": [
          "A. Crew Medical Restraint System (CMR)", 
          "B. Emergency Medical Treatment Pack - Medications (Red) & Other components", 
@@ -1660,7 +1660,7 @@ decisions17to26={
     ],
      "multi": True,
     "max_time": 300},
-            "CAPCOM": {"text": "Communicate FS orders to Commander and FD "},
+            "CAPCOM": {"text": "Assit the team"},
         }
     },
 
@@ -2231,7 +2231,7 @@ decisions17to26={
 
         {"inject": "Decision 24 (11:26:00): ", 
         "role_specific": {
-            "Commander(CMO,IV2)": {"text":"You’re in communication with MCC"},
+            "Commander(CMO,IV2)": {"text":"Wait for instructions from the Flight Surgeon"},
             "FE-2(IV1)": {"text": "After completing the tasks communicated by the CAPCOM. You now start the relocation to the CRV. In discution with FE-3(EV2), how are you transporting FE-1(EV1)?", "options": ["A. Attach EVA 1 securely to the Crew Mobility Restraint (CMR) system to minimise movement and maintain stability throughout transit.","B. Manually guide EVA 1 to the Crew Rescue Vehicle (CRV), ensuring controlled progress along a predetermined path.","C. Integrate both systems—first restrain EVA 1 using the CMR, then guide him toward the CRV—to maximise safety by merging immobilisation with controlled movement.","D. Allow EVA 1 to use a SAFER (Simplified Aid for EVA Rescue) unit for self-mobility while remaining tethered to a guideline, providing flexibility in movement coupled with a safety backup."],
         "scores":  [
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #A
@@ -2247,8 +2247,8 @@ decisions17to26={
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #C
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
         ],"max_time": 300},
-            "FD": {"text": "Receive information from CAPCOM."},
-            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)?", 
+            "FD": {"text": "Assit the team"},
+            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)? Communicate your decision to the Commander.", 
      "options": [
          "A. Crew Medical Restraint System (CMR)", 
          "B. Emergency Medical Treatment Pack - Medications (Red) & Other components", 
@@ -2306,7 +2306,7 @@ decisions17to26={
     ],
      "multi": True,
     "max_time": 300},
-            "CAPCOM": {"text": "Communicate FS orders to Commander and FD "},
+            "CAPCOM": {"text": "Assit the team"},
         }
     },
 
@@ -2491,7 +2491,7 @@ decisions17to26={
 
         {"inject": "Decision 24 (11:35:00): ", 
         "role_specific": {
-            "Commander(CMO,IV2)": {"text":"You’re in communication with MCC"},
+            "Commander(CMO,IV2)": {"text":"Wait for instructions from the Flight Surgeon"},
             "FE-2(IV1)": {"text": "After completing the tasks communicated by the CAPCOM. You now start the relocation to the CRV. In discution with FE-3(EV2), how are you transporting FE-1(EV1)?", "options": ["A. Attach EVA 1 securely to the Crew Mobility Restraint (CMR) system to minimise movement and maintain stability throughout transit.","B. Manually guide EVA 1 to the Crew Rescue Vehicle (CRV), ensuring controlled progress along a predetermined path.","C. Integrate both systems—first restrain EVA 1 using the CMR, then guide him toward the CRV—to maximise safety by merging immobilisation with controlled movement.","D. Allow EVA 1 to use a SAFER (Simplified Aid for EVA Rescue) unit for self-mobility while remaining tethered to a guideline, providing flexibility in movement coupled with a safety backup."],
         "scores":  [
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #A
@@ -2507,8 +2507,8 @@ decisions17to26={
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #C
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
         ],"max_time": 300},
-            "FD": {"text": "Receive information from CAPCOM."},
-            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)?", 
+            "FD": {"text": "Assit the team"},
+            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)? Communicate your decision to the Commander.", 
      "options": [
          "A. Crew Medical Restraint System (CMR)", 
          "B. Emergency Medical Treatment Pack - Medications (Red) & Other components", 
@@ -2566,7 +2566,7 @@ decisions17to26={
     ],
      "multi": True,
     "max_time": 300},
-            "CAPCOM": {"text": "Communicate FS orders to Commander and FD "},
+            "CAPCOM": {"text": "Assit the team"},
         }
     },
 
@@ -2720,7 +2720,7 @@ decisions17to26={
 
         {"inject": "Decision 24 (11:35:00): ", 
         "role_specific": {
-            "Commander(CMO,IV2)": {"text":"You’re in communication with MCC"},
+            "Commander(CMO,IV2)": {"text":"Wait for instructions from the Flight Surgeon"},
             "FE-2(IV1)": {"text": "After completing the tasks communicated by the CAPCOM. You now start the relocation to the CRV. In discution with FE-3(EV2), how are you transporting FE-1(EV1)?", "options": ["A. Attach EVA 1 securely to the Crew Mobility Restraint (CMR) system to minimise movement and maintain stability throughout transit.","B. Manually guide EVA 1 to the Crew Rescue Vehicle (CRV), ensuring controlled progress along a predetermined path.","C. Integrate both systems—first restrain EVA 1 using the CMR, then guide him toward the CRV—to maximise safety by merging immobilisation with controlled movement.","D. Allow EVA 1 to use a SAFER (Simplified Aid for EVA Rescue) unit for self-mobility while remaining tethered to a guideline, providing flexibility in movement coupled with a safety backup."],
         "scores":  [
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #A
@@ -2736,8 +2736,8 @@ decisions17to26={
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #C
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
         ],"max_time": 300},
-            "FD": {"text": "Receive information from CAPCOM."},
-            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)?", 
+            "FD": {"text": "Assit the team"},
+            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)? Communicate your decision to the Commander.", 
      "options": [
          "A. Crew Medical Restraint System (CMR)", 
          "B. Emergency Medical Treatment Pack - Medications (Red) & Other components", 
@@ -2795,7 +2795,7 @@ decisions17to26={
     ],
      "multi": True,
     "max_time": 300},
-            "CAPCOM": {"text": "Communicate FS orders to Commander and FD "},
+            "CAPCOM": {"text": "Assit the team"},
         }
     },
 
@@ -2948,7 +2948,7 @@ decisions17to26={
 
         {"inject": "Decision 24 (11:35:00): ", 
         "role_specific": {
-            "Commander(CMO,IV2)": {"text":"You’re in communication with MCC"},
+            "Commander(CMO,IV2)": {"text":"Wait for instructions from the Flight Surgeon"},
             "FE-2(IV1)": {"text": "After completing the tasks communicated by the CAPCOM. You now start the relocation to the CRV. In discution with FE-3(EV2), how are you transporting FE-1(EV1)?", "options": ["A. Attach EVA 1 securely to the Crew Mobility Restraint (CMR) system to minimise movement and maintain stability throughout transit.","B. Manually guide EVA 1 to the Crew Rescue Vehicle (CRV), ensuring controlled progress along a predetermined path.","C. Integrate both systems—first restrain EVA 1 using the CMR, then guide him toward the CRV—to maximise safety by merging immobilisation with controlled movement.","D. Allow EVA 1 to use a SAFER (Simplified Aid for EVA Rescue) unit for self-mobility while remaining tethered to a guideline, providing flexibility in movement coupled with a safety backup."],
         "scores":  [
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0.5}, #A
@@ -2964,8 +2964,8 @@ decisions17to26={
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":1}, #C
         {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
         ],"max_time": 300},
-            "FD": {"text": "Receive information from CAPCOM."},
-            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)?", 
+            "FD": {"text": "Assit the team"},
+            "FS": {"text": "With the results of the point‑of‑care blood glucose, serum electrolytes and perform NIH Stroke Scale. Dicuss with BME what medical equipment should the Crew Medical Officer (CMO) prepare (maxim. 5)? Communicate your decision to the Commander.", 
      "options": [
          "A. Crew Medical Restraint System (CMR)", 
          "B. Emergency Medical Treatment Pack - Medications (Red) & Other components", 
@@ -3023,7 +3023,7 @@ decisions17to26={
     ],
      "multi": True,
     "max_time": 300},
-            "CAPCOM": {"text": "Communicate FS orders to Commander and FD "},
+            "CAPCOM": {"text": "Assit the team"},
         }
     },
 
