@@ -4493,9 +4493,9 @@ def run(supabase, simulation_name: str, role: str):
         _derive_stage_if_needed()
     stage = st.session_state.dm_stage 
 
-    st.write("RUN DEBUG → stage:", st.session_state.dm_stage,
-         "current_decision_index:", st.session_state.current_decision_index,
-         "len(all_questions):", len(st.session_state.get("all_questions", [])))
+    # st.write("RUN DEBUG → stage:", st.session_state.dm_stage,
+    #      "current_decision_index:", st.session_state.current_decision_index,
+    #      "len(all_questions):", len(st.session_state.get("all_questions", [])))
 
     # st.write("🔍 [DEBUG run] stage =", st.session_state.get("dm_stage"))
     # st.write("🔍 [DEBUG run] answers:", st.session_state.get("answers"))
