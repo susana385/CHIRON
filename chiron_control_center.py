@@ -1025,7 +1025,7 @@ def page_dm_questionnaire(key_prefix: str = ""):
       "FD", "FS", "BME", "CAPCOM",
     ]
 
-    if st.session_state.get("dm_stage") == 8 and st.button("✅ Submit and Continue", key=f"{key_prefix}-submit_continue"):
+    if st.session_state.get("dm_stage") == 8 and st.button("✅ See individual results", key=f"{key_prefix}-submit_continue"):
         # 1) mark this participant finished
         try:
             finish_iso = datetime.utcnow().isoformat() + "Z"
@@ -1703,26 +1703,26 @@ def page_dashboard():
         )
         return
     
-    try:
-        res = (
-            supabase
-            .from_("simulation")
-            .select("status")
-            .eq("id", sim_id)
-            .single()
-            .execute()
-        )
-        sim_meta = res.data or {}
-    except APIError as e:
-        st.info("Could not read simulation meta.⏳ Loading… please wait a moment.")
-        st_autorefresh(interval=2000, limit=None, key="retry_answers")
-        return
+    # try:
+    #     res = (
+    #         supabase
+    #         .from_("simulation")
+    #         .select("status")
+    #         .eq("id", sim_id)
+    #         .single()
+    #         .execute()
+    #     )
+    #     sim_meta = res.data or {}
+    # except APIError as e:
+    #     st.info("Could not read simulation meta.⏳ Loading… please wait a moment.")
+    #     st_autorefresh(interval=2000, limit=None, key="retry_answers")
+    #     return
         
     
-    status       = sim_meta.get("status")
-    if status != "finished":
-        st.info("Simulation not marked finished yet.")
-        return
+    # status       = sim_meta.get("status")
+    # if status != "finished":
+    #     st.info("Simulation not marked finished yet.")
+    #     return
 
     if st.button("🏆 View Team Results"):
         nav_to("certify_and_results")
@@ -1897,7 +1897,11 @@ def page_teamwork_survey():
 
 
     st.markdown("---")
-    col_submit, col_reset, col_cancel = st.columns(3)
+    col_back, col_submit, col_reset, col_cancel = st.columns(4)
+    with col_back:
+        if st.button("⬅️ Back"):
+            nav_to("menu_iniciar_simulação_supervisor")
+            return
     with col_submit:
         submit_clicked = st.button("✅ Submit All Assessments")
     with col_reset:

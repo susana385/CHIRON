@@ -90,10 +90,10 @@ def inject_css():
 
 # Define astronaut data
 astronauts = [
-    {"name": "Mariana Peyroteo", "role": "FE-1(EV1)", "age": 50, "gender": "Female", "status": "Normal"},
-    {"name": "Ana Martins", "role": "FE-3(EV2)", "age": 45, "gender": "Female", "status": "Warning"},
-    {"name": "Joana Godinho", "role": "Commander (CMO,IV2)", "age": 47, "gender": "Female", "status": "Critical"},
-    {"name": "Mariana Figueiras", "role": "FE-2(IV1)", "age": 40, "gender": "Female", "status": "Normal"},
+    {"name": "Pedro", "role": "FE-1(EV1)", "age": 50, "gender": "Female", "status": "Normal"},
+    {"name": "Mateus", "role": "FE-3(EV2)", "age": 45, "gender": "Female", "status": "Warning"},
+    {"name": "Max", "role": "Commander (CMO,IV2)", "age": 47, "gender": "Female", "status": "Critical"},
+    {"name": "Nathan", "role": "FE-2(IV1)", "age": 40, "gender": "Female", "status": "Normal"},
 ]
 
 
