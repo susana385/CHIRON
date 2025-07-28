@@ -949,7 +949,7 @@ def page_dm_role_claim():
             st.session_state._stage_locked = True
             nav_to("dm_questionnaire")
     else:
-        st.info(f"Waiting until all {len(parts)} participants have roles…")
+        st.info(f"Waiting until all 8 participants have roles…")
 
 # ------------------------------------------------------- Page 4 Participant ----------------------------------------------------------
 
