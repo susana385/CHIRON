@@ -2721,6 +2721,8 @@ def page_individual_results():
 
     st.header("📈 Your Individual Results")
     st.caption(f"Simulation: **{sim_name}** | Role: **{dm_role}**")
+    if st.button("🔄 Refresh"):
+            st.rerun()
 
     # ---------- snapshot ----------
     sync_simulation_state(sim_id)
