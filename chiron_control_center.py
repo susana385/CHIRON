@@ -3229,11 +3229,11 @@ def page_running_simulations():
             branch = decisions17to19_12C[:]
         else:
             branch = []
-        st.write("🔍 [DEBUG final key]", repr(a12), repr(a15))
-        st.write("🔍 [DEBUG final keys available]", len(decisions17to26), "combinations")
+        # st.write("🔍 [DEBUG final key]", repr(a12), repr(a15))
+        # st.write("🔍 [DEBUG final keys available]", len(decisions17to26), "combinations")
 
         final = decisions17to26.get((a12,a15), [])
-        st.write("🔍 [DEBUG final length]", len(final))
+        # st.write("🔍 [DEBUG final length]", len(final))
 
         # assemble all_steps
         all_steps = ['Initial Situation']
@@ -3269,7 +3269,7 @@ def page_running_simulations():
             m = re.match(r'^(Initial Situation|Inject \d+|Decision \d+)', x.strip())
             return m.group(1) if m else x.strip()
         
-        st.write("🔍 DEBUG raw answers for PID", part['id'], ":", raw)
+        # st.write("🔍 DEBUG raw answers for PID", part['id'], ":", raw)
 
 
         seen = set()

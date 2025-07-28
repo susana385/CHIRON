@@ -281,7 +281,7 @@ decisions1to15 = [
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0.5, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #C
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0.3, "Definitive_Care":0,"Crew_Roles_Communication":0, "Systems_Procedural_Knowledge":0}, #D
     ],"max_time": 300},
-            "CAPCOM": {"text": "Communicate with COMMANDER (IV2) and FE-2(IV1) to abort EVA, instructing the EVs to return to the crew lock and the IVs to prepare the crew lock for repressurization."},
+            "CAPCOM": {"text": "Communicate the information provided by FD to FE-2(IV1)."},
         }
     },
 
