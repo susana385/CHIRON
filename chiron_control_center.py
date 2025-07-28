@@ -3260,7 +3260,7 @@ def page_running_simulations():
             return
         raw = getattr(ans_resp, 'data', []) or []
 
-        st.write("🔍 raw answers for", role, raw)
+        # st.write("🔍 raw answers for", role, raw)
 
 
         # normalize helper
