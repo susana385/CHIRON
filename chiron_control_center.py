@@ -1212,9 +1212,9 @@ def render_participant_live(pid: int, sim_id: int):
         done = row and row.get("answer_text") == "DONE"
         cnt = step_counts.get(current, 0)
         if done:
-            st.info(f"You marked DONE. Waiting others… ({cnt}/8)")
+            st.info(f"The participant marked DONE. Waiting others… ({cnt}/8)")
         else:
-            st.warning("You haven't clicked next yet.")
+            st.warning("The participant haven't clicked next yet.")
         return
 
     # Regular decision prompt
@@ -1957,7 +1957,7 @@ def page_teamwork_survey():
                     .execute()
                 )
                 # If it didn’t raise, you can also inspect ins_res.data:
-                st.write("🔍 Insert response:", ins_res.__dict__)
+                # st.write("🔍 Insert response:", ins_res.__dict__)
             except APIError as e:  # the full PostgREST JSON error
                 st.info("Could not insert TEAM record.⏳ Loading… please wait a moment.")
                 st_autorefresh(interval=2000, limit=None, key="retry_answers")
