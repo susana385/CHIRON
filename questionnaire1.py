@@ -82,7 +82,7 @@ decisions1to15 = [
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0.5, "Systems_Procedural_Knowledge":0}, #C
       {"Basic_Life_Support":0,"Primary_Survey":0, "Secondary_Survey":0, "Definitive_Care":0,"Crew_Roles_Communication":0.3, "Systems_Procedural_Knowledge":0}, #D
     ],"max_time": 30},
-            "CAPCOM": {"text": "Check how are the things are going with the all astronauts during the fixation of the new component for the new radiation study. Report the status back to the flight director and flight surgeon."},
+            "CAPCOM": {"text": "Check how are the things going with the all astronauts during the fixation of the new component for the new radiation study. Report the status back to the flight director and flight surgeon."},
         } },
 
      {"inject": "Decision 3 (10:00:00): ", 
