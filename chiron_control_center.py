@@ -1169,9 +1169,9 @@ def render_participant_live(pid: int, sim_id: int):
         show_initial_situation()
         my_row = my_answer_map.get("Initial Situation")
         if my_row and my_row.get("answer_text") == "DONE":
-            st.info("✅ You have started the simulation")
+            st.info("✅ The participant has started the simulation")
         else:
-            st.warning("⏳ You have not started the simulation yet")
+            st.warning("⏳ The participant hasn't started the simulation yet")
         return
     if current == "Finished":
         st.success("✅ All steps completed.")
